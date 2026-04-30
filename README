@@ -1,4 +1,4 @@
-```
+```c
 ./kernel/hecaton.c
 ./kernel/hecaton_data.h
 ./include/linux/hecaton.h
