@@ -104,6 +104,7 @@ static void end_report(unsigned long *flags)
 		 */
 		panic_on_warn = 0;
 		panic("panic_on_warn set ...\n");
+		current->hf = 1;
 	}
 	kasan_enable_current();
 }
