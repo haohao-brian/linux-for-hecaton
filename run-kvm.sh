@@ -1,8 +1,8 @@
 #!/bin/bash
 
 CONSOLE=mon:stdio
-SMP=8
-MEMSIZE=$((16368))
+SMP=4
+MEMSIZE=$((4096))
 KERNEL="arch/arm64/boot/Image"
 FS="../../images/make-image-output.img"
 CMDLINE="earlycon=pl011,0x09000000"
