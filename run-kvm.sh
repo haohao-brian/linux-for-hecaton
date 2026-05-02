@@ -4,7 +4,7 @@ CONSOLE=mon:stdio
 SMP=8
 MEMSIZE=$((16368))
 KERNEL="arch/arm64/boot/Image"
-FS="../../images/bullseye.img"
+FS="../../images/make-image-output.img"
 CMDLINE="earlycon=pl011,0x09000000"
 BUG_REPRO_CMDLINE="oops=panic panic_on_warn=1 panic=-1"
 DUMPDTB=""
