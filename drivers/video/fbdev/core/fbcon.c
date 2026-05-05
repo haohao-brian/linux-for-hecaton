@@ -2572,6 +2572,7 @@ static int fbcon_do_set_font(struct vc_data *vc, int w, int h,
 	struct fbcon_display *p = &fb_display[vc->vc_num];
 	int resize;
 	int cnt;
+	int err = 0;
 	char *old_data = NULL;
 
 	if (con_is_visible(vc) && softback_lines)
@@ -2601,7 +2602,10 @@ static int fbcon_do_set_font(struct vc_data *vc, int w, int h,
 		rows = FBCON_SWAP(ops->rotate, info->var.yres, info->var.xres);
 		cols /= w;
 		rows /= h;
-		vc_resize(vc, cols, rows);
+		/* CVE-2024-26798: check vc_resize() error and jump to err_out */
+		err = vc_resize(vc, cols, rows);
+		if (err)
+			goto err_out;
 		if (con_is_visible(vc) && softback_buf)
 			fbcon_update_softback(vc);
 	} else if (con_is_visible(vc)
@@ -2613,6 +2617,11 @@ static int fbcon_do_set_font(struct vc_data *vc, int w, int h,
 	if (old_data && (--REFCOUNT(old_data) == 0))
 		kfree(old_data - FONT_EXTRA_WORDS * sizeof(int));
 	return 0;
+
+err_out:
+        /* CVE-2024-26798: restores old_data which is NULL when !p->userfont */
+        vc->vc_font.data = old_data;
+        return err;
 }
 
 static int fbcon_copy_font(struct vc_data *vc, int con)
