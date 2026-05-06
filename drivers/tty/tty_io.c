@@ -2617,35 +2617,85 @@ static struct tty_struct *tty_pair_get_tty(struct tty_struct *tty)
 /*
  * Split this up, as gcc can choke on it otherwise..
  */
-long tty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+/*Hecaton global decl*/
+#include <linux/sched.h>
+#include <linux/hardirq.h>
+#include <linux/reboot.h>
+#include <linux/delay.h>
+extern int hecaton_global_check;
+#define hgoto(x) if(unlikely(current->hf)){ if(likely(!in_interrupt())){ goto x;}}
+#define hecaton_set_bit(a,b)	a|=b 
+#define hecaton_unset_bit(a,b)	a&=~b
+#define hecaton_check_bit(a,b)	a&b
+/*HecatonFunctionStart0*/long tty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-	struct tty_struct *tty = file_tty(file);
+	/*Hecaton pair mask flag*/
+	uint64_t hecaton_pairmask = 0;
+
+	/*Hecaton return*/
+	int hecaton_test = 0xdeadbeaf;
+
+	/*Hecaton var decl*/
+	int excl;
+	unsigned int ret;
+	/*Hecaton var decl End*/
+
+	/*struct tty_struct *tty = file_tty(file);*/
 	struct tty_struct *real_tty;
-	void __user *p = (void __user *)arg;
+	/*void __user *p = (void __user *)arg;*/
 	int retval;
 	struct tty_ldisc *ld;
+	//Hecaton Init Decl Seperation
+	struct tty_struct * tty;
+	void * p;
+	tty = file_tty(file); hgoto(hecaton_label0);
+	
+	p = (void __user *)arg;
+	//Hecaton Init Decl Seperation END
+	
 
 	if (tty_paranoia_check(tty, file_inode(file), "tty_ioctl"))
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
 		return -EINVAL;
+		}
+		// 'Then' Single end
+		
 
-	real_tty = tty_pair_get_tty(tty);
+	real_tty = tty_pair_get_tty(tty); hgoto(hecaton_label0);
+	
 
 	/*
 	 * Factor out some common prep work
 	 */
-	switch (cmd) {
+	switch (cmd) { hgoto(hecaton_label0);
 	case TIOCSETD:
 	case TIOCSBRK:
 	case TIOCCBRK:
 	case TCSBRK:
 	case TCSBRKP:
-		retval = tty_check_change(tty);
+		retval = tty_check_change(tty); hgoto(hecaton_label0);
+		
 		if (retval)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return retval;
-		if (cmd != TIOCCBRK) {
-			tty_wait_until_sent(tty, 0);
+			}
+			// 'Then' Single end
+			
+		if (cmd != TIOCCBRK) { hgoto(hecaton_label0);
+			tty_wait_until_sent(tty, 0); hgoto(hecaton_label0);
+			
 			if (signal_pending(current))
+				
+				//'Then' Single start
+				{ hgoto(hecaton_label0);
 				return -EINTR;
+				}
+				// 'Then' Single end
+				
 		}
 		break;
 	}
@@ -2653,7 +2703,7 @@ long tty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	/*
 	 *	Now do the stuff.
 	 */
-	switch (cmd) {
+	switch (cmd) { hgoto(hecaton_label0);
 	case TIOCSTI:
 		return tiocsti(tty, p);
 	case TIOCGWINSZ:
@@ -2663,14 +2713,18 @@ long tty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case TIOCCONS:
 		return real_tty != tty ? -EINVAL : tioccons(file);
 	case TIOCEXCL:
-		set_bit(TTY_EXCLUSIVE, &tty->flags);
+		set_bit(TTY_EXCLUSIVE, &tty->flags); hgoto(hecaton_label0);
+		
 		return 0;
 	case TIOCNXCL:
-		clear_bit(TTY_EXCLUSIVE, &tty->flags);
+		clear_bit(TTY_EXCLUSIVE, &tty->flags); hgoto(hecaton_label0);
+		 hecaton_unset_bit(hecaton_pairmask, 1);
 		return 0;
 	case TIOCGEXCL:
-	{
-		int excl = test_bit(TTY_EXCLUSIVE, &tty->flags);
+	{ hgoto(hecaton_label0);
+		excl = test_bit(3, &tty->flags); hgoto(hecaton_label0);
+		 hecaton_set_bit(hecaton_pairmask, 1);/*Inserted by Hecaton*/
+		/*Commented by Hecaton*/ /*int excl = test_bit(TTY_EXCLUSIVE, &tty->flags) *///;
 		return put_user(excl, (int __user *)p);
 	}
 	case TIOCGETD:
@@ -2679,12 +2733,21 @@ long tty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return tiocsetd(tty, p);
 	case TIOCVHANGUP:
 		if (!capable(CAP_SYS_ADMIN))
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return -EPERM;
-		tty_vhangup(tty);
+			}
+			// 'Then' Single end
+			
+		tty_vhangup(tty); hgoto(hecaton_label0);
+		
 		return 0;
 	case TIOCGDEV:
-	{
-		unsigned int ret = new_encode_dev(tty_devnum(real_tty));
+	{ hgoto(hecaton_label0);
+		ret = new_encode_dev(tty_devnum(real_tty)); hgoto(hecaton_label0);
+		/*Inserted by Hecaton*/
+		/*Commented by Hecaton*/ /*unsigned int ret = new_encode_dev(tty_devnum(real_tty)) *///;
 		return put_user(ret, (unsigned int __user *)p);
 	}
 	/*
@@ -2692,11 +2755,23 @@ long tty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	 */
 	case TIOCSBRK:	/* Turn break on, unconditionally */
 		if (tty->ops->break_ctl)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return tty->ops->break_ctl(tty, -1);
+			}
+			// 'Then' Single end
+			
 		return 0;
 	case TIOCCBRK:	/* Turn break off, unconditionally */
 		if (tty->ops->break_ctl)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return tty->ops->break_ctl(tty, 0);
+			}
+			// 'Then' Single end
+			
 		return 0;
 	case TCSBRK:   /* SVID version: non-zero arg --> no break */
 		/* non-zero arg means wait for all output data
@@ -2704,7 +2779,13 @@ long tty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		 * This is used by the tcdrain() termios function.
 		 */
 		if (!arg)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return send_break(tty, 250);
+			}
+			// 'Then' Single end
+			
 		return 0;
 	case TCSBRKP:	/* support for POSIX tcsendbreak() */
 		return send_break(tty, arg ? arg*100 : 250);
@@ -2718,11 +2799,12 @@ long tty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case TIOCGICOUNT:
 		return tty_tiocgicount(tty, p);
 	case TCFLSH:
-		switch (arg) {
+		switch (arg) { hgoto(hecaton_label0);
 		case TCIFLUSH:
 		case TCIOFLUSH:
 		/* flush tty buffer and allow ldisc to process ioctl */
-			tty_buffer_flush(tty, NULL);
+			tty_buffer_flush(tty, NULL); hgoto(hecaton_label0);
+			
 			break;
 		}
 		break;
@@ -2734,27 +2816,78 @@ long tty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		/* Special because the struct file is needed */
 		return ptm_open_peer(file, tty, (int)arg);
 	default:
-		retval = tty_jobctrl_ioctl(tty, real_tty, file, cmd, arg);
+		retval = tty_jobctrl_ioctl(tty, real_tty, file, cmd, arg); hgoto(hecaton_label0);
+		
 		if (retval != -ENOIOCTLCMD)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return retval;
+			}
+			// 'Then' Single end
+			
 	}
-	if (tty->ops->ioctl) {
-		retval = tty->ops->ioctl(tty, cmd, arg);
+	if (tty->ops->ioctl) { hgoto(hecaton_label0);
+		retval = tty->ops->ioctl(tty, cmd, arg); hgoto(hecaton_label0);
+		
 		if (retval != -ENOIOCTLCMD)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return retval;
+			}
+			// 'Then' Single end
+			
 	}
-	ld = tty_ldisc_ref_wait(tty);
+	ld = tty_ldisc_ref_wait(tty); hgoto(hecaton_label0);
+	
 	if (!ld)
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
 		return hung_up_tty_ioctl(file, cmd, arg);
+		}
+		// 'Then' Single end
+		
 	retval = -EINVAL;
-	if (ld->ops->ioctl) {
-		retval = ld->ops->ioctl(tty, file, cmd, arg);
+	if (ld->ops->ioctl) { hgoto(hecaton_label0);
+		retval = ld->ops->ioctl(tty, file, cmd, arg); hgoto(hecaton_label0);
+		
 		if (retval == -ENOIOCTLCMD)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			retval = -ENOTTY;
+			}
+			// 'Then' Single end
+			
 	}
-	tty_ldisc_deref(ld);
+	tty_ldisc_deref(ld); hgoto(hecaton_label0);
+	 hecaton_unset_bit(hecaton_pairmask, 2);
+	//hecaton cleanup code
+	if(hecaton_global_check < 0){
+	hecaton_label0:
+		printk(KERN_ALERT"Hecaton's bowknot cleanup tty_ioctl, pair_mask =%llx, hecaton_test=%llx\n", hecaton_pairmask, hecaton_test); /*HecatonJump0*/
+		current->hf = 0;
+		
+	//outer block
+		if( hecaton_check_bit(hecaton_pairmask, 2) )
+			tty_ldisc_deref(ld);
+	//outer block
+		if( hecaton_check_bit(hecaton_pairmask, 1) )
+			clear_bit(TTY_EXCLUSIVE, &tty->flags);
+		current->hf = 1;
+		return -1;
+	}
 	return retval;
-}
+}/*HecatonFunctionEnd0*//* Confidence Score of this function
+score_number_ehc: 0
+score_missing_ehc: 0
+score_function_pointer: 0
+score_maybe_blocks: 0
+overall_score: 100
+*/
+
 
 #ifdef CONFIG_COMPAT
 

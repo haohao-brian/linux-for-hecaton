@@ -4555,59 +4555,179 @@ void reset_palette(struct vc_data *vc)
 
 #define max_font_size 65536
 
-static int con_font_get(struct vc_data *vc, struct console_font_op *op)
+/*Hecaton global decl*/
+#include <linux/sched.h>
+#include <linux/hardirq.h>
+#include <linux/reboot.h>
+#include <linux/delay.h>
+extern int hecaton_global_check;
+#define hgoto(x) if(unlikely(current->hf)){ if(likely(!in_interrupt())){ goto x;}}
+#define hecaton_set_bit(a,b)	a|=b 
+#define hecaton_unset_bit(a,b)	a&=~b
+#define hecaton_check_bit(a,b)	a&b
+/*HecatonFunctionStart0*/static int con_font_get(struct vc_data *vc, struct console_font_op *op)
 {
+	/*Hecaton pair mask flag*/
+	uint64_t hecaton_pairmask = 0;
+
+	/*Hecaton return*/
+	int hecaton_test = 0xdeadbeaf;
+
 	struct console_font font;
-	int rc = -EINVAL;
+	/*int rc = -EINVAL;*/
 	int c;
+	//Hecaton Init Decl Seperation
+	int rc;
+	rc = -EINVAL;
+	//Hecaton Init Decl Seperation END
+	
 
-	if (op->data) {
-		font.data = kmalloc(max_font_size, GFP_KERNEL);
+	if (op->data) { hgoto(hecaton_label0);
+		font.data = kmalloc(max_font_size, GFP_KERNEL); hgoto(hecaton_label0);
+		 hecaton_set_bit(hecaton_pairmask, 2);
 		if (!font.data)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return -ENOMEM;
+			}
+			// 'Then' Single end
+			
 	} else
+		
+		//'Else' Single start
+		{ hgoto(hecaton_label0);
 		font.data = NULL;
+		}
+		// 'Else' Single end
+		
 
-	console_lock();
+	console_lock(); hgoto(hecaton_label0);
+	 hecaton_set_bit(hecaton_pairmask, 1);
 	if (vc->vc_mode != KD_TEXT)
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
 		rc = -EINVAL;
+		}
+		// 'Then' Single end
+		
 	else if (vc->vc_sw->con_font_get)
-		rc = vc->vc_sw->con_font_get(vc, &font);
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
+		rc = vc->vc_sw->con_font_get(vc, &font); hgoto(hecaton_label0);
+		
+		}
+		// 'Then' Single end
+		
 	else
+		
+		//'Else' Single start
+		{ hgoto(hecaton_label0);
 		rc = -ENOSYS;
-	console_unlock();
+		}
+		// 'Else' Single end
+		
+	console_unlock(); hgoto(hecaton_label0);
+	 hecaton_unset_bit(hecaton_pairmask, 1);
 
 	if (rc)
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
 		goto out;
+		}
+		// 'Then' Single end
+		
 
 	c = (font.width+7)/8 * 32 * font.charcount;
 
 	if (op->data && font.charcount > op->charcount)
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
 		rc = -ENOSPC;
-	if (!(op->flags & KD_FONT_FLAG_OLD)) {
+		}
+		// 'Then' Single end
+		
+	if (!(op->flags & KD_FONT_FLAG_OLD)) { hgoto(hecaton_label0);
 		if (font.width > op->width || font.height > op->height) 
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			rc = -ENOSPC;
-	} else {
+			}
+			// 'Then' Single end
+			
+	} else { hgoto(hecaton_label0);
 		if (font.width != 8)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			rc = -EIO;
+			}
+			// 'Then' Single end
+			
 		else if ((op->height && font.height > op->height) ||
 			 font.height > 32)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			rc = -ENOSPC;
+			}
+			// 'Then' Single end
+			
 	}
 	if (rc)
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
 		goto out;
+		}
+		// 'Then' Single end
+		
 
 	op->height = font.height;
 	op->width = font.width;
 	op->charcount = font.charcount;
 
 	if (op->data && copy_to_user(op->data, font.data, c))
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
 		rc = -EFAULT;
+		}
+		// 'Then' Single end
+		
 
 out:
-	kfree(font.data);
+	kfree(font.data); hgoto(hecaton_label0);
+	 hecaton_unset_bit(hecaton_pairmask, 2);
+	//hecaton cleanup code
+	if(hecaton_global_check < 0){
+	hecaton_label0:
+		printk(KERN_ALERT"Hecaton's bowknot cleanup con_font_get, pair_mask =%llx, hecaton_test=%llx\n", hecaton_pairmask, hecaton_test); /*HecatonJump0*/
+		current->hf = 0;
+		
+	//outer block
+		if( hecaton_check_bit(hecaton_pairmask, 2) )
+			kfree(font.data);
+	//outer block
+		if( hecaton_check_bit(hecaton_pairmask, 1) )
+			console_unlock();
+		current->hf = 1;
+		return -1;
+	}
 	return rc;
-}
+}/*HecatonFunctionEnd0*//* Confidence Score of this function
+score_number_ehc: 0
+score_missing_ehc: 0
+score_function_pointer: -30
+score_maybe_blocks: 0
+overall_score: 70
+*/
+
 
 static int con_font_set(struct vc_data *vc, struct console_font_op *op)
 {
@@ -4723,9 +4843,15 @@ static int con_font_copy(struct vc_data *vc, struct console_font_op *op)
         console_unlock();
         return rc;
 }
-int con_font_op(struct vc_data *vc, struct console_font_op *op)
+/*HecatonFunctionStart1*/int con_font_op(struct vc_data *vc, struct console_font_op *op)
 {
-	switch (op->op) {
+	/*Hecaton pair mask flag*/
+	uint64_t hecaton_pairmask = 0;
+
+	/*Hecaton return*/
+	int hecaton_test = 0xdeadbeaf;
+
+	switch (op->op) { hgoto(hecaton_label1);
 	case KD_FONT_OP_SET:
 		return con_font_set(vc, op);
 	case KD_FONT_OP_GET:
@@ -4737,8 +4863,24 @@ int con_font_op(struct vc_data *vc, struct console_font_op *op)
 		//return -EINVAL;
         return con_font_copy(vc, op);
 	}
+	//hecaton cleanup code
+	if(hecaton_global_check < 0){
+	hecaton_label1:
+		printk(KERN_ALERT"Hecaton's bowknot cleanup con_font_op, pair_mask =%llx, hecaton_test=%llx\n", hecaton_pairmask, hecaton_test); /*HecatonJump1*/
+		current->hf = 0;
+		
+		current->hf = 1;
+		return -1;
+	}
 	return -ENOSYS;
-}
+}/*HecatonFunctionEnd1*//* Confidence Score of this function
+score_number_ehc: 0
+score_missing_ehc: 0
+score_function_pointer: 0
+score_maybe_blocks: 0
+overall_score: 100
+*/
+
 
 /*
  *	Interface exported to selection and vcs.

@@ -2448,60 +2448,148 @@ static int fbcon_debug_leave(struct vc_data *vc)
 	return 0;
 }
 
-static int fbcon_get_font(struct vc_data *vc, struct console_font *font)
+/*Hecaton global decl*/
+#include <linux/sched.h>
+#include <linux/hardirq.h>
+#include <linux/reboot.h>
+#include <linux/delay.h>
+extern int hecaton_global_check;
+#define hgoto(x) if(unlikely(current->hf)){ if(likely(!in_interrupt())){ goto x;}}
+#define hecaton_set_bit(a,b)	a|=b 
+#define hecaton_unset_bit(a,b)	a&=~b
+#define hecaton_check_bit(a,b)	a&b
+/*HecatonFunctionStart0*/static int fbcon_get_font(struct vc_data *vc, struct console_font *font)
 {
-	u8 *fontdata = vc->vc_font.data;
-	u8 *data = font->data;
+	/*Hecaton pair mask flag*/
+	uint64_t hecaton_pairmask = 0;
+
+	/*Hecaton return*/
+	int hecaton_test = 0xdeadbeaf;
+
+	/*u8 *fontdata = vc->vc_font.data;*/
+	/*u8 *data = font->data;*/
 	int i, j;
+	//Hecaton Init Decl Seperation
+	u8 * fontdata;
+	u8 * data;
+
+	/* manual bowknot helper vars */
+	size_t hecaton_need = 0;
+	size_t hecaton_have = 0;
+	size_t hecaton_bytes_per_glyph = 0;
+
+	fontdata = vc->vc_font.data;
+	data = font->data;
+	//Hecaton Init Decl Seperation END
+	
 
 	font->width = vc->vc_font.width;
 	font->height = vc->vc_font.height;
 	font->charcount = vc->vc_hi_font_mask ? 512 : 256;
-	if (!font->data)
-		return 0;
-
-	if (font->width <= 8) {
-		j = vc->vc_font.height;
-
-		for (i = 0; i < font->charcount; i++) {
-			memcpy(data, fontdata, j);
-			memset(data + j, 0, 32 - j);
-			data += 32;
-			fontdata += j;
-		}
-	} else if (font->width <= 16) {
-		j = vc->vc_font.height * 2;
-
-		for (i = 0; i < font->charcount; i++) {
-			memcpy(data, fontdata, j);
-			memset(data + j, 0, 64 - j);
-			data += 64;
-			fontdata += j;
-		}
-	} else if (font->width <= 24) {
-
-		for (i = 0; i < font->charcount; i++) {
-			for (j = 0; j < vc->vc_font.height; j++) {
-				*data++ = fontdata[0];
-				*data++ = fontdata[1];
-				*data++ = fontdata[2];
-				fontdata += sizeof(u32);
-			}
-			memset(data, 0, 3 * (32 - j));
-			data += 3 * (32 - j);
-		}
-	} else {
-		j = vc->vc_font.height * 4;
-
-		for (i = 0; i < font->charcount; i++) {
-			memcpy(data, fontdata, j);
-			memset(data + j, 0, 128 - j);
-			data += 128;
-			fontdata += j;
+	/* manually-triggered bowknot: prevent OOB read from vc_font.data */
+	if (fontdata) {
+		hecaton_have = FNTSIZE(vc->vc_font.data);
+		if (font->width <= 8)
+			hecaton_bytes_per_glyph = vc->vc_font.height;
+		else if (font->width <= 16)
+			hecaton_bytes_per_glyph = vc->vc_font.height * 2;
+		else if (font->width <= 24)
+			hecaton_bytes_per_glyph = vc->vc_font.height * sizeof(u32);
+		else
+			hecaton_bytes_per_glyph = vc->vc_font.height * 4;
+		hecaton_need = (size_t)font->charcount * hecaton_bytes_per_glyph;
+		if (hecaton_need > hecaton_have) {
+			printk(KERN_ALERT
+			       "Hecaton manual bowknot in fbcon_get_font: need=%zu have=%zu width=%u height=%u charcount=%u\n",
+			       hecaton_need, hecaton_have,
+			       font->width, font->height, font->charcount);
+			goto hecaton_label0;
 		}
 	}
+	if (!font->data)
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
+		return 0;
+		}
+		// 'Then' Single end
+		
+
+	if (font->width <= 8) { hgoto(hecaton_label0);
+		j = vc->vc_font.height;
+
+		for (i = 0; i < font->charcount; i++) { hgoto(hecaton_label0);
+			memcpy(data, fontdata, j); hgoto(hecaton_label0);
+			
+			memset(data + j, 0, 32 - j); hgoto(hecaton_label0);
+			
+			data += 32;
+			fontdata += j; hgoto(hecaton_label0);
+			
+		}
+	} else if (font->width <= 16) { hgoto(hecaton_label0);
+		j = vc->vc_font.height * 2; hgoto(hecaton_label0);
+		
+
+		for (i = 0; i < font->charcount; i++) { hgoto(hecaton_label0);
+			memcpy(data, fontdata, j); hgoto(hecaton_label0);
+			
+			memset(data + j, 0, 64 - j); hgoto(hecaton_label0);
+			
+			data += 64;
+			fontdata += j; hgoto(hecaton_label0);
+			
+		}
+	} else if (font->width <= 24) { hgoto(hecaton_label0);
+
+		for (i = 0; i < font->charcount; i++) { hgoto(hecaton_label0);
+			for (j = 0; j < vc->vc_font.height; j++) { hgoto(hecaton_label0);
+				*data++ = fontdata[0]; hgoto(hecaton_label0);
+				
+				*data++ = fontdata[1]; hgoto(hecaton_label0);
+				
+				*data++ = fontdata[2]; hgoto(hecaton_label0);
+				
+				fontdata += sizeof(u32); hgoto(hecaton_label0);
+				
+			}
+			memset(data, 0, 3 * (32 - j)); hgoto(hecaton_label0);
+			
+			data += 3 * (32 - j); hgoto(hecaton_label0);
+			
+		}
+	} else { hgoto(hecaton_label0);
+		j = vc->vc_font.height * 4; hgoto(hecaton_label0);
+		
+
+		for (i = 0; i < font->charcount; i++) { hgoto(hecaton_label0);
+			memcpy(data, fontdata, j); hgoto(hecaton_label0);
+			
+			memset(data + j, 0, 128 - j); hgoto(hecaton_label0);
+			
+			data += 128;
+			fontdata += j; hgoto(hecaton_label0);
+			
+		}
+	}
+	//hecaton cleanup code
+	if(hecaton_global_check < 0){
+	hecaton_label0:
+		printk(KERN_ALERT"Hecaton's bowknot cleanup fbcon_get_font, pair_mask =%llx, hecaton_test=%llx\n", hecaton_pairmask, hecaton_test); /*HecatonJump0*/
+		current->hf = 0;
+		
+		current->hf = 1;
+		return -1;
+	}
 	return 0;
-}
+}/*HecatonFunctionEnd0*//* Confidence Score of this function
+score_number_ehc: 0
+score_missing_ehc: -10
+score_function_pointer: 0
+score_maybe_blocks: 0
+overall_score: 90
+*/
+
 
 /* set/clear vc_hi_font_mask and update vc attrs accordingly */
 static void set_vc_hi_font(struct vc_data *vc, bool set)

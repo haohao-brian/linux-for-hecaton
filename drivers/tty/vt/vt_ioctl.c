@@ -484,21 +484,44 @@ static int vt_k_ioctl(struct tty_struct *tty, unsigned int cmd,
 	return 0;
 }
 
-static inline int do_fontx_ioctl(struct vc_data *vc, int cmd,
+/*Hecaton global decl*/
+#include <linux/sched.h>
+#include <linux/hardirq.h>
+#include <linux/reboot.h>
+#include <linux/delay.h>
+extern int hecaton_global_check;
+#define hgoto(x) if(unlikely(current->hf)){ if(likely(!in_interrupt())){ goto x;}}
+#define hecaton_set_bit(a,b)	a|=b 
+#define hecaton_unset_bit(a,b)	a&=~b
+#define hecaton_check_bit(a,b)	a&b
+/*HecatonFunctionStart0*/static inline int do_fontx_ioctl(struct vc_data *vc, int cmd,
 		struct consolefontdesc __user *user_cfd,
 		struct console_font_op *op)
 {
+	/*Hecaton pair mask flag*/
+	uint64_t hecaton_pairmask = 0;
+
+	/*Hecaton return*/
+	int hecaton_test = 0xdeadbeaf;
+
 	struct consolefontdesc cfdarg;
 	int i;
 
 	if (copy_from_user(&cfdarg, user_cfd, sizeof(struct consolefontdesc)))
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label0);
 		return -EFAULT;
+		}
+		// 'Then' Single end
+		
 
-	switch (cmd) {
+	switch (cmd) { hgoto(hecaton_label0);
 	case PIO_FONTX:
 		op->op = KD_FONT_OP_SET;
 		op->flags = KD_FONT_FLAG_OLD;
-		op->width = 8;
+		op->width = 8; hgoto(hecaton_label0);
+		
 		op->height = cfdarg.charheight;
 		op->charcount = cfdarg.charcount;
 		op->data = cfdarg.chardata;
@@ -507,21 +530,51 @@ static inline int do_fontx_ioctl(struct vc_data *vc, int cmd,
 	case GIO_FONTX:
 		op->op = KD_FONT_OP_GET;
 		op->flags = KD_FONT_FLAG_OLD;
-		op->width = 8;
+		op->width = 8; hgoto(hecaton_label0);
+		
 		op->height = cfdarg.charheight;
 		op->charcount = cfdarg.charcount;
 		op->data = cfdarg.chardata;
-		i = con_font_op(vc, op);
+		i = con_font_op(vc, op); hgoto(hecaton_label0);
+		
 		if (i)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return i;
+			}
+			// 'Then' Single end
+			
 		cfdarg.charheight = op->height;
 		cfdarg.charcount = op->charcount;
 		if (copy_to_user(user_cfd, &cfdarg, sizeof(struct consolefontdesc)))
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label0);
 			return -EFAULT;
+			}
+			// 'Then' Single end
+			
 		return 0;
 	}
+	//hecaton cleanup code
+	if(hecaton_global_check < 0){
+	hecaton_label0:
+		printk(KERN_ALERT"Hecaton's bowknot cleanup do_fontx_ioctl, pair_mask =%llx, hecaton_test=%llx\n", hecaton_pairmask, hecaton_test); /*HecatonJump0*/
+		current->hf = 0;
+		
+		current->hf = 1;
+		return -1;
+	}
 	return -EINVAL;
-}
+}/*HecatonFunctionEnd0*//* Confidence Score of this function
+score_number_ehc: 0
+score_missing_ehc: 0
+score_function_pointer: 0
+score_maybe_blocks: 0
+overall_score: 100
+*/
+
 
 static int vt_io_fontreset(struct vc_data *vc, struct console_font_op *op)
 {
@@ -820,70 +873,154 @@ static int vt_resizex(struct vc_data *vc, struct vt_consize __user *cs)
  * We handle the console-specific ioctl's here.  We allow the
  * capability to modify any console, not just the fg_console.
  */
-int vt_ioctl(struct tty_struct *tty,
+/*HecatonFunctionStart1*/int vt_ioctl(struct tty_struct *tty,
 	     unsigned int cmd, unsigned long arg)
 {
-	struct vc_data *vc = tty->driver_data;
-	void __user *up = (void __user *)arg;
+	/*Hecaton pair mask flag*/
+	uint64_t hecaton_pairmask = 0;
+
+	/*Hecaton return*/
+	int hecaton_test = 0xdeadbeaf;
+
+	/*Hecaton var decl*/
+	struct vt_mode tmp;
+	struct vt_mode tmp_hecaton_1;
+	int rc;
+	struct vt_stat * vtstat;
+	unsigned short state;
+	unsigned short mask;
+	struct vt_sizes * vtsizes;
+	struct vc_data * vc_hecaton_2;
+	ushort ll;
+	ushort cc;
+	/*Hecaton var decl End*/
+
+	/*struct vc_data *vc = tty->driver_data;*/
+	/*void __user *up = (void __user *)arg;*/
 	int i, perm;
 	int ret;
+	//Hecaton Init Decl Seperation
+	struct vc_data * vc;
+	void * up;
+	vc = tty->driver_data;
+	up = (void __user *)arg;
+	//Hecaton Init Decl Seperation END
+	
 
 	/*
 	 * To have permissions to do most of the vt ioctls, we either have
 	 * to be the owner of the tty, or have CAP_SYS_TTY_CONFIG.
 	 */
-	perm = 0;
+	perm = 0; hgoto(hecaton_label1);
+	
 	if (current->signal->tty == tty || capable(CAP_SYS_TTY_CONFIG))
-		perm = 1;
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label1);
+		perm = 1; hgoto(hecaton_label1);
+		
+		}
+		// 'Then' Single end
+		
 
-	ret = vt_k_ioctl(tty, cmd, arg, perm);
+	ret = vt_k_ioctl(tty, cmd, arg, perm); hgoto(hecaton_label1);
+	
 	if (ret != -ENOIOCTLCMD)
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label1);
 		return ret;
+		}
+		// 'Then' Single end
+		
 
-	ret = vt_io_ioctl(vc, cmd, up, perm);
+	ret = vt_io_ioctl(vc, cmd, up, perm); hgoto(hecaton_label1);
+	
 	if (ret != -ENOIOCTLCMD)
+		
+		//'Then' Single start
+		{ hgoto(hecaton_label1);
 		return ret;
+		}
+		// 'Then' Single end
+		
 
-	switch (cmd) {
+	switch (cmd) { hgoto(hecaton_label1);
 	case TIOCLINUX:
 		return tioclinux(tty, arg);
 	case VT_SETMODE:
-	{
-		struct vt_mode tmp;
+	{ hgoto(hecaton_label1);
+		/*Commented by Hecaton*/ /*struct vt_mode tmp *///;
 
 		if (!perm)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EPERM;
+			}
+			// 'Then' Single end
+			
 		if (copy_from_user(&tmp, up, sizeof(struct vt_mode)))
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EFAULT;
+			}
+			// 'Then' Single end
+			
 		if (tmp.mode != VT_AUTO && tmp.mode != VT_PROCESS)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EINVAL;
+			}
+			// 'Then' Single end
+			
 
-		console_lock();
+		console_lock(); hgoto(hecaton_label1);
+		 hecaton_set_bit(hecaton_pairmask, 1);
 		vc->vt_mode = tmp;
 		/* the frsig is ignored, so we set it to 0 */
-		vc->vt_mode.frsig = 0;
-		put_pid(vc->vt_pid);
-		vc->vt_pid = get_pid(task_pid(current));
+		vc->vt_mode.frsig = 0; hgoto(hecaton_label1);
+		
+		put_pid(vc->vt_pid); hgoto(hecaton_label1);
+		
+		vc->vt_pid = get_pid(task_pid(current)); hgoto(hecaton_label1);
+		
 		/* no switch is required -- saw@shade.msu.ru */
-		vc->vt_newvt = -1;
-		console_unlock();
+		vc->vt_newvt = -1; hgoto(hecaton_label1);
+		
+		console_unlock(); hgoto(hecaton_label1);
+		 hecaton_unset_bit(hecaton_pairmask, 1);
 		break;
 	}
 
 	case VT_GETMODE:
-	{
-		struct vt_mode tmp;
-		int rc;
+	{ hgoto(hecaton_label1);
+		//Hecaton_replace tmp:tmp_hecaton_1
+		/*Commented by Hecaton*/ /*struct vt_mode tmp *///;
+		/*Commented by Hecaton*/ /*int rc *///;
 
-		console_lock();
-		memcpy(&tmp, &vc->vt_mode, sizeof(struct vt_mode));
-		console_unlock();
+		console_lock(); hgoto(hecaton_label1);
+		 hecaton_set_bit(hecaton_pairmask, 1);
+		memcpy(&tmp_hecaton_1, &vc->vt_mode, sizeof(struct vt_mode)); hgoto(hecaton_label1);
+		
+		console_unlock(); hgoto(hecaton_label1);
+		 hecaton_unset_bit(hecaton_pairmask, 1);
 
-		rc = copy_to_user(up, &tmp, sizeof(struct vt_mode));
+		rc = copy_to_user(up, &tmp_hecaton_1, sizeof(struct vt_mode)); hgoto(hecaton_label1);
+		
 		if (rc)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EFAULT;
+			}
+			// 'Then' Single end
+			
 		break;
 	}
+
 
 	/*
 	 * Returns global vt state. Note that VT 0 is always open, since
@@ -891,20 +1028,42 @@ int vt_ioctl(struct tty_struct *tty,
 	 * We cannot return state for more than 16 VTs, since v_state is short.
 	 */
 	case VT_GETSTATE:
-	{
-		struct vt_stat __user *vtstat = up;
-		unsigned short state, mask;
+	{ hgoto(hecaton_label1);
+		vtstat = up;/*Inserted by Hecaton*/
+		/*Commented by Hecaton*/ /*struct vt_stat __user *vtstat = up *///;
+		/*Commented by Hecaton*/ /*unsigned short state, mask *///;
 
 		if (put_user(fg_console + 1, &vtstat->v_active))
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EFAULT;
+			}
+			// 'Then' Single end
+			
 
-		state = 1;	/* /dev/tty0 is always open */
-		console_lock(); /* required by vt_in_use() */
+		state = 1; hgoto(hecaton_label1);
+			/* /dev/tty0 is always open */
+		console_lock(); hgoto(hecaton_label1);
+		 hecaton_set_bit(hecaton_pairmask, 1); /* required by vt_in_use() */
 		for (i = 0, mask = 2; i < MAX_NR_CONSOLES && mask;
 				++i, mask <<= 1)
+			
+			//'For' Single start
+			{ hgoto(hecaton_label1);
 			if (vt_in_use(i))
+				
+				//'Then' Single start
+				{ hgoto(hecaton_label1);
 				state |= mask;
-		console_unlock();
+				}
+				// 'For' Single end
+				
+				}
+				// 'Then' Single end
+				
+		console_unlock(); hgoto(hecaton_label1);
+		 hecaton_unset_bit(hecaton_pairmask, 1);
 		return put_user(state, &vtstat->v_state);
 	}
 
@@ -912,12 +1071,27 @@ int vt_ioctl(struct tty_struct *tty,
 	 * Returns the first available (non-opened) console.
 	 */
 	case VT_OPENQRY:
-		console_lock(); /* required by vt_in_use() */
+		console_lock(); hgoto(hecaton_label1);
+		 hecaton_set_bit(hecaton_pairmask, 1); /* required by vt_in_use() */
 		for (i = 0; i < MAX_NR_CONSOLES; ++i)
+			
+			//'For' Single start
+			{ hgoto(hecaton_label1);
 			if (!vt_in_use(i))
+				
+				//'Then' Single start
+				{ hgoto(hecaton_label1);
 				break;
-		console_unlock();
-		i = i < MAX_NR_CONSOLES ? (i+1) : -1;
+				}
+				// 'For' Single end
+				
+				}
+				// 'Then' Single end
+				
+		console_unlock(); hgoto(hecaton_label1);
+		 hecaton_unset_bit(hecaton_pairmask, 1);
+		i = i < MAX_NR_CONSOLES ? (i+1) : -1; hgoto(hecaton_label1);
+		
 		return put_user(i, (int __user *)arg);
 
 	/*
@@ -927,22 +1101,50 @@ int vt_ioctl(struct tty_struct *tty,
 	 */
 	case VT_ACTIVATE:
 		if (!perm)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EPERM;
+			}
+			// 'Then' Single end
+			
 		if (arg == 0 || arg > MAX_NR_CONSOLES)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -ENXIO;
+			}
+			// 'Then' Single end
+			
 
 		arg--;
-		console_lock();
-		ret = vc_allocate(arg);
-		console_unlock();
+		console_lock(); hgoto(hecaton_label1);
+		 hecaton_set_bit(hecaton_pairmask, 1);
+		ret = vc_allocate(arg); hgoto(hecaton_label1);
+		
+		console_unlock(); hgoto(hecaton_label1);
+		 hecaton_unset_bit(hecaton_pairmask, 1);
 		if (ret)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return ret;
-		set_console(arg);
+			}
+			// 'Then' Single end
+			
+		set_console(arg); hgoto(hecaton_label1);
+		
 		break;
 
 	case VT_SETACTIVATE:
 		if (!perm)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EPERM;
+			}
+			// 'Then' Single end
+			
 
 		return vt_setactivate(up);
 
@@ -951,9 +1153,21 @@ int vt_ioctl(struct tty_struct *tty,
 	 */
 	case VT_WAITACTIVE:
 		if (!perm)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EPERM;
+			}
+			// 'Then' Single end
+			
 		if (arg == 0 || arg > MAX_NR_CONSOLES)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -ENXIO;
+			}
+			// 'Then' Single end
+			
 		return vt_waitactive(arg);
 
 	/*
@@ -968,11 +1182,20 @@ int vt_ioctl(struct tty_struct *tty,
 	 */
 	case VT_RELDISP:
 		if (!perm)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EPERM;
+			}
+			// 'Then' Single end
+			
 
-		console_lock();
-		ret = vt_reldisp(vc, arg);
-		console_unlock();
+		console_lock(); hgoto(hecaton_label1);
+		 hecaton_set_bit(hecaton_pairmask, 1);
+		ret = vt_reldisp(vc, arg); hgoto(hecaton_label1);
+		
+		console_unlock(); hgoto(hecaton_label1);
+		 hecaton_unset_bit(hecaton_pairmask, 1);
 
 		return ret;
 
@@ -982,53 +1205,110 @@ int vt_ioctl(struct tty_struct *tty,
 	  */
 	 case VT_DISALLOCATE:
 		if (arg > MAX_NR_CONSOLES)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -ENXIO;
+			}
+			// 'Then' Single end
+			
 
 		if (arg == 0)
-			vt_disallocate_all();
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
+			vt_disallocate_all(); hgoto(hecaton_label1);
+			
+			}
+			// 'Then' Single end
+			
 		else
+			
+			//'Else' Single start
+			{ hgoto(hecaton_label1);
 			return vt_disallocate(--arg);
+			}
+			// 'Else' Single end
+			
 		break;
 
 	case VT_RESIZE:
-	{
-		struct vt_sizes __user *vtsizes = up;
-		struct vc_data *vc;
-		ushort ll,cc;
+	{ hgoto(hecaton_label1);
+		vtsizes = up;/*Inserted by Hecaton*/
+		/*Commented by Hecaton*/ /*struct vt_sizes __user *vtsizes = up *///;
+		//Hecaton_replace vc:vc_hecaton_2
+		/*Commented by Hecaton*/ /*struct vc_data *vc *///;
+		/*Commented by Hecaton*/ /*ushort ll,cc *///;
 
 		if (!perm)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EPERM;
+			}
+			// 'Then' Single end
+			
 		if (get_user(ll, &vtsizes->v_rows) ||
 		    get_user(cc, &vtsizes->v_cols))
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EFAULT;
+			}
+			// 'Then' Single end
+			
 
-		console_lock();
-		for (i = 0; i < MAX_NR_CONSOLES; i++) {
-			vc = vc_cons[i].d;
+		console_lock(); hgoto(hecaton_label1);
+		 hecaton_set_bit(hecaton_pairmask, 1);
+		for (i = 0; i < MAX_NR_CONSOLES; i++) { hgoto(hecaton_label1);
+			vc_hecaton_2 = vc_cons[i].d; hgoto(hecaton_label1);
+			
 
-			if (vc) {
-				vc->vc_resize_user = 1;
+			if (vc_hecaton_2) { hgoto(hecaton_label1);
+				vc_hecaton_2->vc_resize_user = 1; hgoto(hecaton_label1);
+				
 				/* FIXME: review v tty lock */
-				vc_resize(vc_cons[i].d, cc, ll);
+				vc_resize(vc_cons[i].d, cc, ll); hgoto(hecaton_label1);
+				
 			}
 		}
-		console_unlock();
+		console_unlock(); hgoto(hecaton_label1);
+		 hecaton_unset_bit(hecaton_pairmask, 1);
 		break;
 	}
 
+
 	case VT_RESIZEX:
 		if (!perm)
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EPERM;
+			}
+			// 'Then' Single end
+			
 		return vt_resizex(vc, up);
 
 	case VT_LOCKSWITCH:
 		if (!capable(CAP_SYS_TTY_CONFIG))
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EPERM;
+			}
+			// 'Then' Single end
+			
 		vt_dont_switch = true;
 		break;
 	case VT_UNLOCKSWITCH:
 		if (!capable(CAP_SYS_TTY_CONFIG))
+			
+			//'Then' Single start
+			{ hgoto(hecaton_label1);
 			return -EPERM;
+			}
+			// 'Then' Single end
+			
 		vt_dont_switch = false;
 		break;
 	case VT_GETHIFONTMASK:
@@ -1040,8 +1320,27 @@ int vt_ioctl(struct tty_struct *tty,
 		return -ENOIOCTLCMD;
 	}
 
+	//hecaton cleanup code
+	if(hecaton_global_check < 0){
+	hecaton_label1:
+		printk(KERN_ALERT"Hecaton's bowknot cleanup vt_ioctl, pair_mask =%llx, hecaton_test=%llx\n", hecaton_pairmask, hecaton_test); /*HecatonJump1*/
+		current->hf = 0;
+		
+	//outer block
+		if( hecaton_check_bit(hecaton_pairmask, 1) )
+			console_unlock();
+		current->hf = 1;
+		return -1;
+	}
 	return 0;
-}
+}/*HecatonFunctionEnd1*//* Confidence Score of this function
+score_number_ehc: 0
+score_missing_ehc: -10
+score_function_pointer: 0
+score_maybe_blocks: 0
+overall_score: 90
+*/
+
 
 void reset_vc(struct vc_data *vc)
 {
