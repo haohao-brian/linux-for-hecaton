@@ -20,6 +20,8 @@
 #include <asm/ptrace.h>
 #include <asm/sysreg.h>
 
+u64 gcr_kernel_excl __ro_after_init;
+
 static void mte_sync_page_tags(struct page *page, pte_t *ptep, bool check_swap)
 {
 	pte_t old_pte = READ_ONCE(*ptep);
@@ -72,11 +74,114 @@ int memcmp_pages(struct page *page1, struct page *page2)
 	return ret;
 }
 
+u8 mte_get_mem_tag(void *addr)
+{
+        unsigned long canon = ((unsigned long)addr & 0x0000FFFFFFFFFFFFUL) |
+                              0xFFFF000000000000UL;
+
+        if (!virt_addr_valid((void *)canon) && !is_vmalloc_addr((void *)canon)) {
+                pr_info("mte_get_mem_tag: invalid/unmapped addr=%px canon=%px\n",
+                        addr, (void *)canon);
+                return 0xf0;
+        }
+#if MTE_DISABLED
+	return 0;
+#else
+	if (system_supports_mte()) {
+#if 0//IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+		asm volatile(
+			 /* NB: This assembly is from mte.S, so keep it
+			  * synced */
+			 "ldr x16, [%0]\n"
+			 "mov x17, #0xF0\n"
+			 "lsl x17, x17, #49\n"
+			 "orr %0, x17, x17"
+#else
+		asm volatile(ALTERNATIVE("ldr %0, [%0]",
+			 __MTE_PREAMBLE "ldg %0, [%0]", ARM64_MTE)
+#endif
+			     : "+r"(addr));
+	}
+	return 0xF0 | mte_get_ptr_tag(addr);
+#endif
+}
+
+u8 mte_get_random_tag(void)
+{
+#if MTE_DISABLED
+	return 0;
+#else
+	u8 tag = 0xF;
+	u64 addr = 0;
+
+	if (system_supports_mte()) {
+		asm volatile(ALTERNATIVE("add %0, %0, %0",
+#if 0//IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+					 "add %0, %0, %0",
+#else
+					 __MTE_PREAMBLE "irg %0, %0",
+#endif
+					 ARM64_MTE)
+			     : "+r" (addr));
+
+		tag = mte_get_ptr_tag(addr);
+	}
+
+	return 0xF0 | tag;
+#endif
+}
+
+void *mte_set_mem_tag_range(void *addr, size_t size, u8 tag)
+{
+	void *ptr = addr;
+
+	if ((!system_supports_mte()) || (size == 0)) {
+		return addr;
+	}
+
+	/* Make sure that size is aligned. */
+	WARN_ON(size & (MTE_GRANULE_SIZE - 1));
+
+	#if 0//IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+	ptr = HAKC_GET_SAFE_PTR(ptr);
+	#else
+	tag = 0xF0 | (tag & 0xF);
+	ptr = (void *)__tag_set(ptr, tag);
+	#endif
+	mte_assign_mem_tag_range(ptr, size);
+
+	return ptr;
+}
+
+void mte_init_tags(u64 max_tag)
+{
+#if 1//!IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+	static bool gcr_kernel_excl_initialized;
+
+	if (!gcr_kernel_excl_initialized) {
+		/*
+		 * The format of the tags in KASAN is 0xFF and in MTE is 0xF.
+		 * This conversion extracts an MTE tag from a KASAN tag.
+		 */
+		u64 incl = GENMASK(FIELD_GET(MTE_TAG_MASK >> MTE_TAG_SHIFT,
+					     max_tag), 0);
+
+		gcr_kernel_excl = ~incl & SYS_GCR_EL1_EXCL_MASK;
+		gcr_kernel_excl_initialized = true;
+	}
+
+	/* Enable the kernel exclude mask for random tags generation. */
+	write_sysreg_s(SYS_GCR_EL1_RRND | gcr_kernel_excl, SYS_GCR_EL1);
+#endif
+}
+
 static void update_sctlr_el1_tcf0(u64 tcf0)
 {
 	/* ISB required for the kernel uaccess routines */
+#if 1//!IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
 	sysreg_clear_set(sctlr_el1, SCTLR_EL1_TCF0_MASK, tcf0);
 	isb();
+#endif
 }
 
 static void set_sctlr_el1_tcf0(u64 tcf0)
@@ -94,15 +199,16 @@ static void set_sctlr_el1_tcf0(u64 tcf0)
 
 static void update_gcr_el1_excl(u64 incl)
 {
-	u64 excl = ~incl & SYS_GCR_EL1_EXCL_MASK;
-
 	/*
 	 * Note that 'incl' is an include mask (controlled by the user via
 	 * prctl()) while GCR_EL1 accepts an exclude mask.
 	 * No need for ISB since this only affects EL0 currently, implicit
 	 * with ERET.
 	 */
+#if 1//!IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+	u64 excl = ~incl & SYS_GCR_EL1_EXCL_MASK;
 	sysreg_clear_set_s(SYS_GCR_EL1, SYS_GCR_EL1_EXCL_MASK, excl);
+#endif
 }
 
 static void set_gcr_el1_excl(u64 incl)
@@ -117,8 +223,10 @@ void flush_mte_state(void)
 		return;
 
 	/* clear any pending asynchronous tag fault */
+#if 1//!IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
 	dsb(ish);
 	write_sysreg_s(0, SYS_TFSRE0_EL1);
+#endif
 	clear_thread_flag(TIF_MTE_ASYNC_FAULT);
 	/* disable tag checking */
 	set_sctlr_el1_tcf0(SCTLR_EL1_TCF0_NONE);

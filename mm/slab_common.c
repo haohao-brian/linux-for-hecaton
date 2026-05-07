@@ -307,6 +307,11 @@ kmem_cache_create_usercopy(const char *name,
 	struct kmem_cache *s = NULL;
 	const char *cache_name;
 	int err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	if(!ZERO_OR_NULL_PTR(name)) {
+		name = HAKC_GET_SAFE_PTR(name);
+	}
+#endif
 
 	get_online_cpus();
 	get_online_mems();

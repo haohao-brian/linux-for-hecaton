@@ -30,6 +30,8 @@
 #include <linux/percpu.h>
 #include <asm/module.h>
 
+#include <linux/hakc.h>
+
 /* Not Yet Implemented */
 #define MODULE_SUPPORTED_DEVICE(name)
 
@@ -457,8 +459,17 @@ struct module {
 
 #ifdef CONFIG_SMP
 	/* Per-cpu data. */
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	void __percpu *percpus[HAKC_COLOR_COUNT + 1];
+  unsigned int percpu_sizes[HAKC_COLOR_COUNT + 1];
+#define percpu_idx  (ARRAY_SIZE(((struct module*)NULL)->percpus) - 1)
+#define for_each_percpu(idx) for(idx = 0; idx <= percpu_idx; idx++)
+#define for_each_added_percpu(idx) for(idx = 0; idx < percpu_idx; idx++)
+#else
 	void __percpu *percpu;
-	unsigned int percpu_size;
+    unsigned int percpu_size;
+#endif
+
 #endif
 	void *noinstr_text_start;
 	unsigned int noinstr_text_size;
@@ -533,6 +544,10 @@ struct module {
 #ifdef CONFIG_FUNCTION_ERROR_INJECTION
 	struct error_injection_entry *ei_funcs;
 	unsigned int num_ei_funcs;
+#endif
+
+#ifdef CONFIG_PAC_MTE_COMPART
+	bool hakc_protected;
 #endif
 } ____cacheline_aligned __randomize_layout;
 #ifndef MODULE_ARCH_INIT

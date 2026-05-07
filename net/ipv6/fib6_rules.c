@@ -21,6 +21,14 @@
 #include <net/ip6_route.h>
 #include <net/netlink.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+	 HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
+
 struct fib6_rule {
 	struct fib_rule		common;
 	struct rt6key		src;
@@ -464,7 +472,7 @@ static const struct fib_rules_ops __net_initconst fib6_rules_ops_template = {
 	.fro_net		= &init_net,
 };
 
-static int __net_init fib6_rules_net_init(struct net *net)
+static int __net_init noinline fib6_rules_net_init(struct net *net)
 {
 	struct fib_rules_ops *ops;
 	int err = -ENOMEM;
@@ -472,6 +480,10 @@ static int __net_init fib6_rules_net_init(struct net *net)
 	ops = fib_rules_register(&fib6_rules_ops_template, net);
 	if (IS_ERR(ops))
 		return PTR_ERR(ops);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	ops = hakc_transfer_to_clique(ops, sizeof(*ops), __claque_id,
+				      __color, false);
+#endif
 
 	err = fib_default_rule_add(ops, 0, RT6_TABLE_LOCAL, 0);
 	if (err)
@@ -491,6 +503,23 @@ out_fib6_rules_ops:
 	goto out;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(fib6_rules_net_init, int, struct net* net) {
+	int result;
+
+	struct proc_dir_entry *orig_proc_net = net->proc_net;
+	/* NB: The sizes were determined at run time */
+	net->proc_net = hakc_transfer_to_clique(net->proc_net, 172,
+						__claque_id, __color, false);
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = fib6_rules_net_init(net);
+	HAKC_GET_SAFE_PTR(net)->proc_net = orig_proc_net;
+
+	return result;
+}
+#endif
+
 static void __net_exit fib6_rules_net_exit(struct net *net)
 {
 	rtnl_lock();
@@ -499,7 +528,11 @@ static void __net_exit fib6_rules_net_exit(struct net *net)
 }
 
 static struct pernet_operations fib6_rules_net_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(fib6_rules_net_init),
+#else
 	.init = fib6_rules_net_init,
+#endif
 	.exit = fib6_rules_net_exit,
 };
 

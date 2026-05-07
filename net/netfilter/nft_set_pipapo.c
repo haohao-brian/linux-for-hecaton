@@ -342,6 +342,15 @@
 #include "nft_set_pipapo_avx2.h"
 #include "nft_set_pipapo.h"
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(3, BLUE_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+           HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
+
 /* Current working bitmap index, toggled between field matches */
 static DEFINE_PER_CPU(bool, nft_pipapo_scratch_index);
 
@@ -527,12 +536,20 @@ static struct nft_pipapo_elem *pipapo_get(const struct net *net,
 		ret = ERR_PTR(-ENOMEM);
 		goto out;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+res_map  = hakc_transfer_to_clique(res_map, m->bsize_max * sizeof(*res_map),
+                            __claque_id, __color, false);
+#endif
 
 	fill_map = kcalloc(m->bsize_max, sizeof(*res_map), GFP_ATOMIC);
 	if (!fill_map) {
 		ret = ERR_PTR(-ENOMEM);
 		goto out;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+fill_map  = hakc_transfer_to_clique(fill_map, m->bsize_max * sizeof(*res_map),
+                            __claque_id, __color, false);
+#endif
 
 	memset(res_map, 0xff, m->bsize_max * sizeof(*res_map));
 
@@ -644,6 +661,11 @@ static int pipapo_resize(struct nft_pipapo_field *f, int old_rules, int rules)
 			  GFP_KERNEL);
 	if (!new_lt)
 		return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  new_lt = hakc_transfer_to_clique(new_lt, f->groups * NFT_PIPAPO_BUCKETS(f->bb) *
+			  new_bucket_size * sizeof(*new_lt) +
+			  NFT_PIPAPO_ALIGN_HEADROOM, __claque_id, __color, false);
+#endif
 
 	new_p = NFT_PIPAPO_LT_ALIGN(new_lt);
 	old_p = NFT_PIPAPO_LT_ALIGN(old_lt);
@@ -668,6 +690,9 @@ mt:
 		return -ENOMEM;
 	}
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  new_mt = hakc_transfer_to_clique(new_mt, rules * sizeof(*new_mt), __claque_id, __color, false);
+#endif
 	memcpy(new_mt, f->mt, min(old_rules, rules) * sizeof(*new_mt));
 	if (rules > old_rules) {
 		memset(new_mt + old_rules, 0,
@@ -1127,6 +1152,10 @@ static int pipapo_realloc_scratch(struct nft_pipapo_match *clone,
 			 */
 			return -ENOMEM;
 		}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+    scratch = hakc_transfer_to_clique(scratch, bsize_max * sizeof(*scratch) * 2 +
+				       NFT_PIPAPO_ALIGN_HEADROOM, __claque_id, __color, false);
+#endif
 
 		kfree(*per_cpu_ptr(clone->scratch, i));
 
@@ -1277,6 +1306,10 @@ static struct nft_pipapo_match *pipapo_clone(struct nft_pipapo_match *old)
 		      GFP_KERNEL);
 	if (!new)
 		return ERR_PTR(-ENOMEM);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+new  = hakc_transfer_to_clique(new, sizeof(*new) + sizeof(*dst) * old->field_count,
+                            __claque_id, __color, false);
+#endif
 
 	new->field_count = old->field_count;
 	new->bsize_max = old->bsize_max;
@@ -1284,6 +1317,10 @@ static struct nft_pipapo_match *pipapo_clone(struct nft_pipapo_match *old)
 	new->scratch = alloc_percpu(*new->scratch);
 	if (!new->scratch)
 		goto out_scratch;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+    new->scratch = hakc_transfer_percpu_to_clique(new->scratch,
+							  sizeof(*new->scratch), __claque_id, __color);
+#endif
 
 #ifdef NFT_PIPAPO_ALIGN
 	new->scratch_aligned = alloc_percpu(*new->scratch_aligned);
@@ -1307,6 +1344,11 @@ static struct nft_pipapo_match *pipapo_clone(struct nft_pipapo_match *old)
 				  GFP_KERNEL);
 		if (!new_lt)
 			goto out_lt;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+    new_lt = hakc_transfer_to_clique(new_lt, src->groups * NFT_PIPAPO_BUCKETS(src->bb) *
+				  src->bsize * sizeof(*dst->lt) +
+				  NFT_PIPAPO_ALIGN_HEADROOM, __claque_id, __color, false);
+#endif
 
 		NFT_PIPAPO_LT_ASSIGN(dst, new_lt);
 
@@ -1318,6 +1360,9 @@ static struct nft_pipapo_match *pipapo_clone(struct nft_pipapo_match *old)
 		dst->mt = kvmalloc(src->rules * sizeof(*src->mt), GFP_KERNEL);
 		if (!dst->mt)
 			goto out_mt;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+    dst->mt = hakc_transfer_to_clique(dst->mt, src->rules * sizeof(*src->mt), __claque_id, __color, false);
+#endif
 
 		memcpy(dst->mt, src->mt, src->rules * sizeof(*src->mt));
 		src++;
@@ -1353,6 +1398,12 @@ out_scratch:
  * will map to the same set of rules in the next field, or to the same element
  * reference, return the cardinality of the set of rules that originated from
  * the same entry as the rule with index @first, @first rule included.
+
+#include <linux/mte-compart.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+#include <linux/pmc-transfer.h>
+HAKC_MODULE_CLAQUE(3, BLUE_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE));
+#endif
  *
  * In pictures:
  *				rules
@@ -2050,6 +2101,10 @@ static int nft_pipapo_init(const struct nft_set *set,
 		    GFP_KERNEL);
 	if (!m)
 		return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+m  = hakc_transfer_to_clique(m, sizeof(*priv->match) + sizeof(*f) * field_count,
+                            __claque_id, __color, false);
+#endif
 
 	m->field_count = field_count;
 	m->bsize_max = 0;
@@ -2059,6 +2114,10 @@ static int nft_pipapo_init(const struct nft_set *set,
 		err = -ENOMEM;
 		goto out_scratch;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+    m->scratch= hakc_transfer_percpu_to_clique(m->scratch,
+							  sizeof(unsigned long *), __claque_id, __color);
+#endif
 	for_each_possible_cpu(i)
 		*per_cpu_ptr(m->scratch, i) = NULL;
 

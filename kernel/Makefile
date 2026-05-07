@@ -46,8 +46,6 @@ obj-y += irq/
 obj-y += rcu/
 obj-y += livepatch/
 obj-y += dma/
-# Hecaton
-obj-y += hecaton.o
 obj-y += entry/
 
 obj-$(CONFIG_KCMP) += kcmp.o

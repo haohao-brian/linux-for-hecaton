@@ -538,6 +538,10 @@ EXPORT_SYMBOL(__kmalloc_node_track_caller);
 void kfree(const void *block)
 {
 	struct page *sp;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	if(!ZERO_OR_NULL_PTR(block))
+		block = HAKC_GET_SAFE_PTR(block);
+#endif
 
 	trace_kfree(_RET_IP_, block);
 

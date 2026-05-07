@@ -68,6 +68,13 @@
 
 #include <linux/uaccess.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+         HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 /*
  *	The ICMP socket(s). This is the most convenient way to flow control
  *	our ICMP output as well as maintain a clean interface throughout
@@ -1020,7 +1027,7 @@ static void __net_exit icmpv6_sk_exit(struct net *net)
 	free_percpu(net->ipv6.icmp_sk);
 }
 
-static int __net_init icmpv6_sk_init(struct net *net)
+static int noinline __net_init icmpv6_sk_init(struct net *net)
 {
 	struct sock *sk;
 	int err, i;
@@ -1028,6 +1035,11 @@ static int __net_init icmpv6_sk_init(struct net *net)
 	net->ipv6.icmp_sk = alloc_percpu(struct sock *);
 	if (!net->ipv6.icmp_sk)
 		return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	net->ipv6.icmp_sk = hakc_transfer_percpu_to_clique(net->ipv6.icmp_sk,
+							  sizeof(struct sock*),
+							  __claque_id, __color);
+#endif
 
 	for_each_possible_cpu(i) {
 		err = inet_ctl_sock_create(&sk, PF_INET6,
@@ -1037,7 +1049,10 @@ static int __net_init icmpv6_sk_init(struct net *net)
 			       err);
 			goto fail;
 		}
-
+//#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+//		sk = hakc_transfer_to_clique(sk, sizeof(*sk), __claque_id, __color,
+//                              false);
+//#endif
 		*per_cpu_ptr(net->ipv6.icmp_sk, i) = sk;
 
 		/* Enough space for 2 64K ICMP packets, including
@@ -1052,8 +1067,29 @@ static int __net_init icmpv6_sk_init(struct net *net)
 	return err;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(icmpv6_sk_init, int, struct net* net) {
+	int result;
+
+	struct proc_dir_entry *orig_proc_net = net->proc_net;
+	/* NB: The sizes were determined at run time */
+	net->proc_net = hakc_transfer_to_clique(net->proc_net, 172,
+						__claque_id, __color, false);
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = icmpv6_sk_init(net);
+	HAKC_GET_SAFE_PTR(net)->proc_net = orig_proc_net;
+
+	return result;
+}
+#endif
+
 static struct pernet_operations icmpv6_sk_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(icmpv6_sk_init),
+#else
 	.init = icmpv6_sk_init,
+#endif
 	.exit = icmpv6_sk_exit,
 };
 
@@ -1204,6 +1240,10 @@ struct ctl_table * __net_init ipv6_icmp_sysctl_init(struct net *net)
 	table = kmemdup(ipv6_icmp_table_template,
 			sizeof(ipv6_icmp_table_template),
 			GFP_KERNEL);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	table = hakc_transfer_to_clique(table, sizeof(ipv6_icmp_table_template),
+				       __claque_id, __color,false);
+#endif
 
 	if (table) {
 		table[0].data = &net->ipv6.sysctl.icmpv6_time;

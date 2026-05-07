@@ -261,7 +261,7 @@ static inline void fast_imageblit(const struct fb_image *image, struct fb_info *
 		s += spitch;
 	}
 }	
-	
+
 void cfb_imageblit(struct fb_info *p, const struct fb_image *image)
 {
 	u32 fgcolor, bgcolor, start_index, bitstart, pitch_index = 0;
@@ -294,11 +294,11 @@ void cfb_imageblit(struct fb_info *p, const struct fb_image *image)
 			bgcolor = image->bg_color;
 		}	
 		
-		if (32 % bpp == 0 && !start_index && !pitch_index && 
+		if (32 % bpp == 0 && !start_index && !pitch_index &&
 		    ((width & (32/bpp-1)) == 0) &&
-		    bpp >= 8 && bpp <= 32) 			
+		    bpp >= 8 && bpp <= 32)
 			fast_imageblit(image, p, dst1, fgcolor, bgcolor);
-		else 
+		else
 			slow_imageblit(image, p, dst1, fgcolor, bgcolor,
 					start_index, pitch_index);
 	} else

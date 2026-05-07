@@ -10,6 +10,12 @@
 #include <net/netfilter/nf_tables_ipv4.h>
 #include <net/netfilter/nf_tables_ipv6.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(3, BLUE_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE));
+#endif
+
 #ifdef CONFIG_NF_TABLES_IPV4
 static unsigned int nft_do_chain_ipv4(void *priv,
 				      struct sk_buff *skb,
@@ -95,19 +101,63 @@ static inline void nft_chain_filter_arp_fini(void) {}
 #endif /* CONFIG_NF_TABLES_ARP */
 
 #ifdef CONFIG_NF_TABLES_IPV6
-static unsigned int nft_do_chain_ipv6(void *priv,
+static hakc_noinline unsigned int nft_do_chain_ipv6(void *priv,
 				      struct sk_buff *skb,
 				      const struct nf_hook_state *state)
 {
 	struct nft_pktinfo pkt;
-
 	nft_set_pktinfo(&pkt, skb, state);
 	nft_set_pktinfo_ipv6(&pkt, skb);
 
 	return nft_do_chain(&pkt, priv);
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+static unsigned int HAKC_TRANSFER_nft_do_chain_ipv6(void *priv,
+              struct sk_buff *skb,
+				      const struct nf_hook_state *state)
+{
+  clique_color_t orig_skb_color = get_hakc_address_color(skb);
+  claque_id_t orig_skb_id = get_hakc_address_claque(skb);   
+  clique_color_t orig_state_color = get_hakc_address_color(state);
+  claque_id_t orig_state_id = get_hakc_address_claque(state);
+  clique_color_t orig_state_sk_color, orig_state_net_color;
+  claque_id_t orig_state_sk_id, orig_state_net_id;    
+  unsigned int retval;
+
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  if (state->sk != NULL) {
+    orig_state_sk_color = get_hakc_address_color(state->sk);
+    orig_state_sk_id = get_hakc_address_claque(state->sk);
+    ((struct nf_hook_state*)state)->sk = hakc_transfer_to_clique(state->sk, sizeof(*state->sk), __claque_id, __color, false);
+  }
+  if (state->net != NULL) {
+    orig_state_net_color = get_hakc_address_color(state->net);
+    orig_state_net_id = get_hakc_address_claque(state->net);
+    ((struct nf_hook_state*)state)->net = hakc_transfer_to_clique(state->net, sizeof(*state->net), __claque_id, __color, false);
+  }
+  state = hakc_transfer_to_clique((void*)state, sizeof(*state), __claque_id, __color, false);
+  retval = nft_do_chain_ipv6(priv, skb, state);
+  skb = HAKC_GET_SAFE_PTR(skb);
+  skb->head = HAKC_GET_SAFE_PTR(skb->head);
+  hakc_transfer_skb(skb, orig_skb_id, orig_skb_color);
+  state = HAKC_GET_SAFE_PTR(state);
+  if (state->sk != NULL) {
+    ((struct nf_hook_state*)state)->sk = hakc_transfer_to_clique(state->sk, sizeof(*state->sk), orig_state_sk_id, orig_state_sk_color, false);
+  }
+  if (state->net != NULL) {
+    ((struct nf_hook_state*)state)->net = hakc_transfer_to_clique(state->net, sizeof(*state->net), orig_state_net_id, orig_state_net_color, false);
+  }
+  state = hakc_transfer_to_clique((void*)state, sizeof(*state), orig_state_id, orig_state_color, false);
+  return retval;
+}
+#endif
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+static struct nft_chain_type nft_chain_filter_ipv6 = {
+#else
 static const struct nft_chain_type nft_chain_filter_ipv6 = {
+#endif
 	.name		= "filter",
 	.type		= NFT_CHAIN_T_DEFAULT,
 	.family		= NFPROTO_IPV6,
@@ -117,11 +167,19 @@ static const struct nft_chain_type nft_chain_filter_ipv6 = {
 			  (1 << NF_INET_PRE_ROUTING) |
 			  (1 << NF_INET_POST_ROUTING),
 	.hooks		= {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		[NF_INET_LOCAL_IN]	= HAKC_TRANSFER_nft_do_chain_ipv6,
+		[NF_INET_LOCAL_OUT]	= HAKC_TRANSFER_nft_do_chain_ipv6,
+		[NF_INET_FORWARD]	= HAKC_TRANSFER_nft_do_chain_ipv6,
+		[NF_INET_PRE_ROUTING]	= HAKC_TRANSFER_nft_do_chain_ipv6,
+		[NF_INET_POST_ROUTING]	= HAKC_TRANSFER_nft_do_chain_ipv6,
+#else
 		[NF_INET_LOCAL_IN]	= nft_do_chain_ipv6,
 		[NF_INET_LOCAL_OUT]	= nft_do_chain_ipv6,
 		[NF_INET_FORWARD]	= nft_do_chain_ipv6,
 		[NF_INET_PRE_ROUTING]	= nft_do_chain_ipv6,
 		[NF_INET_POST_ROUTING]	= nft_do_chain_ipv6,
+#endif
 	},
 };
 
@@ -351,7 +409,7 @@ static void nft_netdev_event(unsigned long event, struct net_device *dev,
 	__nft_release_basechain(ctx);
 }
 
-static int nf_tables_netdev_event(struct notifier_block *this,
+static hakc_noinline int nf_tables_netdev_event(struct notifier_block *this,
 				  unsigned long event, void *ptr)
 {
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
@@ -385,8 +443,26 @@ static int nf_tables_netdev_event(struct notifier_block *this,
 	return NOTIFY_DONE;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_netdev_event, int, struct notifier_block *this,
+				  unsigned long event, void *ptr)
+{
+	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+  struct net *net = dev_net(dev);
+  struct netdev_notifier_info *info = ptr;
+  dev_net_set(dev, hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false));
+  info->dev = hakc_transfer_to_clique(dev, sizeof(*dev), __claque_id, __color, false);
+  info = hakc_transfer_to_clique(info, sizeof(*info), __claque_id, __color, false);
+  return nf_tables_netdev_event(this, event, info);
+}
+#endif
+
 static struct notifier_block nf_tables_netdev_notifier = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+	.notifier_call	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_netdev_event),
+#else
 	.notifier_call	= nf_tables_netdev_event,
+#endif
 };
 
 static int nft_chain_filter_netdev_init(void)

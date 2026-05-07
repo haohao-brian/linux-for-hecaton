@@ -7,6 +7,14 @@
 #include <net/netfilter/nf_tables_offload.h>
 #include <net/pkt_cls.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(3, BLUE_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+         HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 static struct nft_flow_rule *nft_flow_rule_alloc(int num_actions)
 {
 	struct nft_flow_rule *flow;
@@ -14,6 +22,10 @@ static struct nft_flow_rule *nft_flow_rule_alloc(int num_actions)
 	flow = kzalloc(sizeof(struct nft_flow_rule), GFP_KERNEL);
 	if (!flow)
 		return NULL;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+flow  = hakc_transfer_to_clique(flow, sizeof(*flow),
+                            __claque_id, __color, false);
+#endif
 
 	flow->rule = flow_rule_alloc(num_actions);
 	if (!flow->rule) {
@@ -75,6 +87,10 @@ struct nft_flow_rule *nft_flow_rule_create(struct net *net,
 		err = -ENOMEM;
 		goto err_out;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+ctx  = hakc_transfer_to_clique(ctx, sizeof(*ctx),
+                            __claque_id, __color, false);
+#endif
 	ctx->net = net;
 	ctx->dep.type = NFT_OFFLOAD_DEP_UNSPEC;
 
@@ -572,7 +588,7 @@ static struct nft_chain *__nft_offload_get_chain(struct net_device *dev)
 	return NULL;
 }
 
-static int nft_offload_netdev_event(struct notifier_block *this,
+static hakc_noinline int nft_offload_netdev_event(struct notifier_block *this,
 				    unsigned long event, void *ptr)
 {
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
@@ -592,9 +608,26 @@ static int nft_offload_netdev_event(struct notifier_block *this,
 
 	return NOTIFY_DONE;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nft_offload_netdev_event, int, struct notifier_block *this,
+				    unsigned long event, void *ptr)
+{
+	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+  struct net *net = dev_net(hakc_safe_ptr(dev));
+  struct netdev_notifier_info *info = ptr;
+  dev_net_set(hakc_safe_ptr(dev), hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false));
+  info->dev = hakc_transfer_to_clique(dev, sizeof(*dev), __claque_id, __color, false);
+  info = hakc_transfer_to_clique(info, sizeof(*info), __claque_id, __color, false);
+  return nft_offload_netdev_event(this, event, info);
+}
+#endif
 
 static struct notifier_block nft_offload_netdev_notifier = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+	.notifier_call	= HAKC_OUTSIDE_TRANSFER_FUNC(nft_offload_netdev_event),
+#else
 	.notifier_call	= nft_offload_netdev_event,
+#endif
 };
 
 int nft_offload_init(void)

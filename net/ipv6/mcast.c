@@ -60,6 +60,13 @@
 
 #include <net/ip6_checksum.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+         HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 /* Ensure that we have struct in6_addr aligned on 32bit word. */
 static int __mld2_query_bugs[] __attribute__((__unused__)) = {
 	BUILD_BUG_ON_ZERO(offsetof(struct mld2_query, mld2q_srcs) % 4),
@@ -657,6 +664,12 @@ static void igmp6_group_added(struct ifmcaddr6 *mc)
 {
 	struct net_device *dev = mc->idev->dev;
 	char buf[MAX_ADDR_LEN];
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	char *_buf = hakc_transfer_to_clique(buf, sizeof(buf), __claque_id,
+					    __color, false);
+#else
+	char* _buf = buf;
+#endif
 
 	if (IPV6_ADDR_MC_SCOPE(&mc->mca_addr) <
 	    IPV6_ADDR_SCOPE_LINKLOCAL)
@@ -665,8 +678,8 @@ static void igmp6_group_added(struct ifmcaddr6 *mc)
 	spin_lock_bh(&mc->mca_lock);
 	if (!(mc->mca_flags&MAF_LOADED)) {
 		mc->mca_flags |= MAF_LOADED;
-		if (ndisc_mc_map(&mc->mca_addr, buf, dev, 0) == 0)
-			dev_mc_add(dev, buf);
+		if (ndisc_mc_map(&mc->mca_addr, _buf, dev, 0) == 0)
+			dev_mc_add(dev, _buf);
 	}
 	spin_unlock_bh(&mc->mca_lock);
 
@@ -734,6 +747,10 @@ static void mld_add_delrec(struct inet6_dev *idev, struct ifmcaddr6 *im)
 	pmc = kzalloc(sizeof(*pmc), GFP_ATOMIC);
 	if (!pmc)
 		return;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	pmc = hakc_transfer_to_clique(pmc, sizeof(*pmc), __claque_id, __color,
+				     false);
+#endif
 
 	spin_lock_bh(&im->mca_lock);
 	spin_lock_init(&pmc->mca_lock);
@@ -853,6 +870,10 @@ static struct ifmcaddr6 *mca_alloc(struct inet6_dev *idev,
 	mc = kzalloc(sizeof(*mc), GFP_ATOMIC);
 	if (!mc)
 		return NULL;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	mc = hakc_transfer_to_clique(mc, sizeof(*mc), __claque_id, __color,
+				     false);
+#endif
 
 	timer_setup(&mc->mca_timer, igmp6_timer_handler, 0);
 
@@ -2234,6 +2255,10 @@ static int ip6_mc_add1_src(struct ifmcaddr6 *pmc, int sfmode,
 		psf = kzalloc(sizeof(*psf), GFP_ATOMIC);
 		if (!psf)
 			return -ENOBUFS;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+		psf = hakc_transfer_to_clique(psf, sizeof(*psf), __claque_id, __color,
+					    false);
+#endif
 
 		psf->sf_addr = *psfsrc;
 		if (psf_prev) {
@@ -2308,6 +2333,10 @@ static int sf_setstate(struct ifmcaddr6 *pmc)
 				dpsf = kmalloc(sizeof(*dpsf), GFP_ATOMIC);
 				if (!dpsf)
 					continue;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+				dpsf = hakc_transfer_to_clique(dpsf, sizeof(*dpsf), __claque_id, __color,
+							     false);
+#endif
 				*dpsf = *psf;
 				/* pmc->mca_lock held by callers */
 				dpsf->sf_next = pmc->mca_tomb;
@@ -2467,7 +2496,7 @@ static void mld_gq_timer_expire(struct timer_list *t)
 	in6_dev_put(idev);
 }
 
-static void mld_ifc_timer_expire(struct timer_list *t)
+static hakc_noinline void mld_ifc_timer_expire(struct timer_list *t)
 {
 	struct inet6_dev *idev = from_timer(idev, t, mc_ifc_timer);
 
@@ -2480,6 +2509,17 @@ static void mld_ifc_timer_expire(struct timer_list *t)
 	}
 	in6_dev_put(idev);
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(mld_ifc_timer_expire, static void, struct
+				  timer_list *t) {
+	struct inet6_dev *idev = HAKC_GET_SAFE_PTR(from_timer(idev, t,
+							      mc_ifc_timer));
+	idev = hakc_transfer_to_clique(idev, sizeof(*idev), __claque_id,
+				       __color, false);
+	mld_ifc_timer_expire(&idev->mc_ifc_timer);
+}
+#endif
 
 static void mld_ifc_event(struct inet6_dev *idev)
 {
@@ -2582,7 +2622,13 @@ void ipv6_mc_init_dev(struct inet6_dev *idev)
 	timer_setup(&idev->mc_gq_timer, mld_gq_timer_expire, 0);
 	idev->mc_tomb = NULL;
 	idev->mc_ifc_count = 0;
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	timer_setup(&idev->mc_ifc_timer, HAKC_OUTSIDE_TRANSFER_FUNC
+		    (mld_ifc_timer_expire), 0);
+#else
 	timer_setup(&idev->mc_ifc_timer, mld_ifc_timer_expire, 0);
+#endif
 	timer_setup(&idev->mc_dad_timer, mld_dad_timer_expire, 0);
 	ipv6_mc_reset(idev);
 	write_unlock_bh(&idev->lock);
@@ -2637,7 +2683,7 @@ static void ipv6_mc_rejoin_groups(struct inet6_dev *idev)
 		mld_send_report(idev, NULL);
 }
 
-static int ipv6_mc_netdev_event(struct notifier_block *this,
+static int noinline ipv6_mc_netdev_event(struct notifier_block *this,
 				unsigned long event,
 				void *ptr)
 {
@@ -2656,8 +2702,44 @@ static int ipv6_mc_netdev_event(struct notifier_block *this,
 	return NOTIFY_DONE;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(ipv6_mc_netdev_event, int,
+				  struct notifier_block *this,
+				  unsigned long event,
+				  void *ptr)
+{
+	int result;
+	void* prot_v;
+	clique_color_t dev_color;
+	claque_id_t dev_claque;
+
+	struct netdev_notifier_info *info = (struct netdev_notifier_info*)ptr;
+
+	dev_color = get_hakc_address_color(info->dev);
+	dev_claque = get_hakc_address_claque(info->dev);
+	this = hakc_transfer_to_clique(this, sizeof(*this), __claque_id,
+					 __color, false);
+	info->dev = hakc_transfer_to_clique(info->dev, sizeof(struct
+							     net_device),
+					   __claque_id, __color, false);
+	prot_v = hakc_transfer_to_clique(info, sizeof(struct netdev_notifier_info),
+					__claque_id, __color, false);
+
+	result = ipv6_mc_netdev_event(this, event, prot_v);
+
+	info->dev = hakc_transfer_to_clique(info->dev,
+					   sizeof(struct net_device),
+					   dev_claque, dev_color, false);
+	return result;
+}
+#endif
+
 static struct notifier_block igmp6_netdev_notifier = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.notifier_call = HAKC_OUTSIDE_TRANSFER_FUNC(ipv6_mc_netdev_event),
+#else
 	.notifier_call = ipv6_mc_netdev_event,
+#endif
 };
 
 #ifdef CONFIG_PROC_FS
@@ -2952,7 +3034,7 @@ static inline void igmp6_proc_exit(struct net *net)
 }
 #endif
 
-static int __net_init igmp6_net_init(struct net *net)
+static int __net_init noinline igmp6_net_init(struct net *net)
 {
 	int err;
 
@@ -2963,6 +3045,12 @@ static int __net_init igmp6_net_init(struct net *net)
 		       err);
 		goto out;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	net->ipv6.igmp_sk = hakc_transfer_to_clique(net->ipv6.igmp_sk,
+						   sizeof(*net->ipv6.igmp_sk),
+						   __claque_id, __color, false);
+#endif
+
 
 	inet6_sk(net->ipv6.igmp_sk)->hop_limit = 1;
 
@@ -2973,6 +3061,11 @@ static int __net_init igmp6_net_init(struct net *net)
 		       err);
 		goto out_sock_create;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	net->ipv6.mc_autojoin_sk = hakc_transfer_to_clique(net->ipv6.mc_autojoin_sk,
+						   sizeof(*net->ipv6.mc_autojoin_sk),
+						   __claque_id, __color, false);
+#endif
 
 	err = igmp6_proc_init(net);
 	if (err)
@@ -2995,8 +3088,29 @@ static void __net_exit igmp6_net_exit(struct net *net)
 	igmp6_proc_exit(net);
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(igmp6_net_init, int, struct net* net) {
+	int result;
+
+	struct proc_dir_entry *orig_proc_net = net->proc_net;
+	/* NB: The sizes were determined at run time */
+	net->proc_net = hakc_transfer_to_clique(net->proc_net, 172,
+						__claque_id, __color, false);
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = igmp6_net_init(net);
+	HAKC_GET_SAFE_PTR(net)->proc_net = orig_proc_net;
+
+	return result;
+}
+#endif
+
 static struct pernet_operations igmp6_net_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(igmp6_net_init),
+#else
 	.init = igmp6_net_init,
+#endif
 	.exit = igmp6_net_exit,
 };
 

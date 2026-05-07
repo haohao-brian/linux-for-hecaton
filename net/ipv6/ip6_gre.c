@@ -53,6 +53,13 @@
 #include <net/erspan.h>
 #include <net/dst_metadata.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+	 HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 
 static bool log_ecn_error = true;
 module_param(log_ecn_error, bool, 0644);
@@ -1472,7 +1479,12 @@ static int ip6gre_tunnel_init_common(struct net_device *dev)
 	tunnel->net = dev_net(dev);
 	strcpy(tunnel->parms.name, dev->name);
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	dev->tstats = hakc_netdev_alloc_pcpu_stats(struct pcpu_sw_netstats,
+						   __claque_id, __color);
+#else
 	dev->tstats = netdev_alloc_pcpu_stats(struct pcpu_sw_netstats);
+#endif
 	if (!dev->tstats)
 		return -ENOMEM;
 
@@ -1867,7 +1879,12 @@ static int ip6erspan_tap_init(struct net_device *dev)
 	tunnel->net = dev_net(dev);
 	strcpy(tunnel->parms.name, dev->name);
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	dev->tstats = hakc_netdev_alloc_pcpu_stats(struct pcpu_sw_netstats,
+						   __claque_id, __color);
+#else
 	dev->tstats = netdev_alloc_pcpu_stats(struct pcpu_sw_netstats);
+#endif
 	if (!dev->tstats)
 		return -ENOMEM;
 

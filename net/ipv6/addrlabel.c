@@ -20,6 +20,11 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+#endif
+
 #if 0
 #define ADDRLABEL(x...) printk(x)
 #else
@@ -189,6 +194,10 @@ static struct ip6addrlbl_entry *ip6addrlbl_alloc(const struct in6_addr *prefix,
 	newp = kmalloc(sizeof(*newp), GFP_KERNEL);
 	if (!newp)
 		return ERR_PTR(-ENOMEM);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    newp = hakc_transfer_to_clique(newp, sizeof(*newp), __claque_id, __color,
+                                  false);
+#endif
 
 	ipv6_addr_prefix(&newp->prefix, prefix, prefixlen);
 	newp->prefixlen = prefixlen;
@@ -197,6 +206,17 @@ static struct ip6addrlbl_entry *ip6addrlbl_alloc(const struct in6_addr *prefix,
 	newp->label = label;
 	INIT_HLIST_NODE(&newp->list);
 	return newp;
+}
+
+static inline void hlist_add_behind_rcu_tmp(struct hlist_node *n,
+                                        struct hlist_node *prev)
+{
+    n->next = prev->next;
+    WRITE_ONCE(n->pprev, &prev->next);
+    rcu_assign_pointer(hlist_next_rcu(prev), n);
+    if (n->next) {
+        WRITE_ONCE(n->next->pprev, &n->next);
+    }
 }
 
 /* add a label */
@@ -304,7 +324,7 @@ static int ip6addrlbl_del(struct net *net,
 }
 
 /* add default label */
-static int __net_init ip6addrlbl_net_init(struct net *net)
+static int noinline __net_init ip6addrlbl_net_init(struct net *net)
 {
 	struct ip6addrlbl_entry *p = NULL;
 	struct hlist_node *n;
@@ -317,11 +337,20 @@ static int __net_init ip6addrlbl_net_init(struct net *net)
 	INIT_HLIST_HEAD(&net->ipv6.ip6addrlbl_table.head);
 
 	for (i = 0; i < ARRAY_SIZE(ip6addrlbl_init_table); i++) {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
 		err = ip6addrlbl_add(net,
-				     ip6addrlbl_init_table[i].prefix,
+				     hakc_sign_pointer_with_color
+					     ((void*)ip6addrlbl_init_table[i]
+					      .prefix, __claque_id, false),
 				     ip6addrlbl_init_table[i].prefixlen,
 				     0,
 				     ip6addrlbl_init_table[i].label, 0);
+#else
+		err = ip6addrlbl_add(net, ip6addrlbl_init_table[i].prefix,
+				     ip6addrlbl_init_table[i].prefixlen,
+				     0,
+				     ip6addrlbl_init_table[i].label, 0);
+#endif
 		if (err)
 			goto err_ip6addrlbl_add;
 	}
@@ -349,8 +378,24 @@ static void __net_exit ip6addrlbl_net_exit(struct net *net)
 	spin_unlock(&net->ipv6.ip6addrlbl_table.lock);
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(ip6addrlbl_net_init, int, struct net* net) {
+	int result;
+
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = ip6addrlbl_net_init(net);
+
+	return result;
+}
+#endif
+
 static struct pernet_operations ipv6_addr_label_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(ip6addrlbl_net_init),
+#else
 	.init = ip6addrlbl_net_init,
+#endif
 	.exit = ip6addrlbl_net_exit,
 };
 
@@ -608,6 +653,14 @@ static int ip6addrlbl_get(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 	skb = nlmsg_new(ip6addrlbl_msgsize(), GFP_KERNEL);
 	if (!skb)
 		return -ENOBUFS;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+                                  false);
+    skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+				skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);
+#endif
 
 	err = -ESRCH;
 

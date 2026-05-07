@@ -127,6 +127,11 @@ extern void __percpu *__alloc_reserved_percpu(size_t size, size_t align);
 extern bool __is_kernel_percpu_address(unsigned long addr, unsigned long *can_addr);
 extern bool is_kernel_percpu_address(unsigned long addr);
 
+extern bool is_dynamic_percpu_address(unsigned long addr);
+
+extern void *pcpu_ptr_to_addr(void* __percpu ptr);
+void *addr_to_pcpu_ptr(void *ptr);
+
 #if !defined(CONFIG_SMP) || !defined(CONFIG_HAVE_SETUP_PER_CPU_AREA)
 extern void __init setup_per_cpu_areas(void);
 #endif

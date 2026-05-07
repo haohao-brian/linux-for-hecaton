@@ -39,8 +39,6 @@
 #include <asm/tlbflush.h>
 #include <asm/traps.h>
 
-#include <linux/hecaton.h>
-
 struct fault_info {
 	int	(*fn)(unsigned long addr, unsigned int esr,
 		      struct pt_regs *regs);
@@ -285,13 +283,6 @@ static bool __kprobes is_spurious_el1_translation_fault(unsigned long addr,
 static void die_kernel_fault(const char *msg, unsigned long addr,
 			     unsigned int esr, struct pt_regs *regs)
 {
-	pr_err("fault addressing at addr: %016lx\n", addr);
-	pr_err("error message: %s\n", msg);
-	hecaton_update_pt_regs_aarch64(regs, 0);
-	if(current->hf){
-		pr_err("Bowknot needed to handle the fault, resuming execution\n");
-		return;
-	}
 	bust_spinlocks(1);
 
 	pr_alert("Unable to handle kernel %s at virtual address %016lx\n", msg,

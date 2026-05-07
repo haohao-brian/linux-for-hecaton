@@ -302,6 +302,9 @@ int map_kernel_range_noflush(unsigned long addr, unsigned long size,
 
 	BUG_ON(addr >= end);
 	pgd = pgd_offset_k(addr);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	prot = __pgprot(pgprot_val(prot) | PROT_NORMAL_TAGGED);
+#endif
 	do {
 		next = pgd_addr_end(addr, end);
 		if (pgd_bad(*pgd))
@@ -2551,6 +2554,14 @@ void *__vmalloc_node_range(unsigned long size, unsigned long align,
 	size = PAGE_ALIGN(size);
 	if (!size || (size >> PAGE_SHIFT) > totalram_pages())
 		goto fail;
+
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	if(gfp_mask & GFP_KERNEL) {
+		prot = __pgprot(pgprot_val(prot) |
+				pgprot_val(PAGE_KERNEL_TAGGED));
+	}
+#endif
 
 	area = __get_vm_area_node(real_size, align, VM_ALLOC | VM_UNINITIALIZED |
 				vm_flags, start, end, node, gfp_mask, caller);

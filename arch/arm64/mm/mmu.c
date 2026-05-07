@@ -654,6 +654,11 @@ static void __init map_kernel(pgd_t *pgdp)
 	 */
 	pgprot_t text_prot = rodata_enabled ? PAGE_KERNEL_ROX : PAGE_KERNEL_EXEC;
 
+	pgprot_t norm_prot = PAGE_KERNEL;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	norm_prot = PAGE_KERNEL_TAGGED;
+#endif
+
 	/*
 	 * If we have a CPU that supports BTI and a kernel built for
 	 * BTI then mark the kernel executable text as guarded pages
@@ -672,9 +677,9 @@ static void __init map_kernel(pgd_t *pgdp)
 			   &vmlinux_rodata, NO_CONT_MAPPINGS, VM_NO_GUARD);
 	map_kernel_segment(pgdp, __inittext_begin, __inittext_end, text_prot,
 			   &vmlinux_inittext, 0, VM_NO_GUARD);
-	map_kernel_segment(pgdp, __initdata_begin, __initdata_end, PAGE_KERNEL,
+	map_kernel_segment(pgdp, __initdata_begin, __initdata_end, norm_prot,
 			   &vmlinux_initdata, 0, VM_NO_GUARD);
-	map_kernel_segment(pgdp, _data, _end, PAGE_KERNEL, &vmlinux_data, 0, 0);
+	map_kernel_segment(pgdp, _data, _end, norm_prot, &vmlinux_data, 0, 0);
 
 	if (!READ_ONCE(pgd_val(*pgd_offset_pgd(pgdp, FIXADDR_START)))) {
 		/*

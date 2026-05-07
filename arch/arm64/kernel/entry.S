@@ -150,6 +150,9 @@ alternative_cb_end
 	/* Check for MTE asynchronous tag check faults */
 	.macro check_mte_async_tcf, flgs, tmp
 #ifdef CONFIG_ARM64_MTE
+#if IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+	nop
+#else
 alternative_if_not ARM64_MTE
 	b	1f
 alternative_else_nop_endif
@@ -161,17 +164,75 @@ alternative_else_nop_endif
 	msr_s	SYS_TFSRE0_EL1, xzr
 1:
 #endif
+#endif
 	.endm
 
 	/* Clear the MTE asynchronous tag check faults */
 	.macro clear_mte_async_tcf
 #ifdef CONFIG_ARM64_MTE
+#if IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+	nop
+#else
 alternative_if ARM64_MTE
 	dsb	ish
 	msr_s	SYS_TFSRE0_EL1, xzr
 alternative_else_nop_endif
 #endif
+#endif
 	.endm
+
+//	.macro mte_restore_gcr, el, tsk, tmp, tmp2
+//#ifdef CONFIG_ARM64_MTE
+//#if IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+//	nop
+//#else
+//alternative_if_not ARM64_MTE
+//	b	1f
+//alternative_else_nop_endif
+//	.if	\el == 0
+//	ldr	\tmp, [\tsk, #THREAD_GCR_EL1_USER]
+//	.else
+//	ldr_l	\tmp, gcr_kernel_excl
+//	.endif
+//	/*
+//	 * Calculate and set the exclude mask preserving
+//	 * the RRND (bit[16]) setting.
+//	 */
+//	mrs_s	\tmp2, SYS_GCR_EL1
+//	bfi	\tmp2, \tmp, #0, #16
+//	msr_s	SYS_GCR_EL1, \tmp2
+//	isb
+//1:
+//#endif
+//#endif
+//	.endm
+.macro mte_set_gcr, tmp, tmp2
+#ifdef CONFIG_ARM64_MTE
+/*
+	 * Calculate and set the exclude mask preserving
+	 * the RRND (bit[16]) setting.
+	 */
+	mrs_s	\tmp2, SYS_GCR_EL1
+	bfi	\tmp2, \tmp, #0, #16
+	msr_s	SYS_GCR_EL1, \tmp2
+#endif
+.endm
+
+.macro mte_set_kernel_gcr, tmp, tmp2
+#if defined(CONFIG_KASAN_HW_TAGS) || (defined(CONFIG_PAC_MTE_COMPART) && \
+				      !defined(CONFIG_PAC_MTE_EVAL_CODEGEN))
+alternative_if_not ARM64_MTE
+	b	1f
+alternative_else_nop_endif
+	ldr_l	\tmp, gcr_kernel_excl
+
+	mte_set_gcr \tmp, \tmp2
+	isb
+1:
+#elif defined(CONFIG_PAC_MTE_COMPART) && defined(CONFIG_PAC_MTE_EVAL_CODEGEN)
+	nop
+#endif
+.endm
 
 	.macro	kernel_entry, el, regsize = 64
 	.if	\regsize == 32
@@ -211,6 +272,8 @@ alternative_else_nop_endif
 	apply_ssbd 1, x22, x23
 
 	ptrauth_keys_install_kernel tsk, x20, x22, x23
+
+	mte_set_kernel_gcr x22, x23
 
 	scs_load tsk, x20
 	.else
@@ -261,9 +324,13 @@ alternative_else_nop_endif
 
 	/* Re-enable tag checking (TCO set on exception entry) */
 #ifdef CONFIG_ARM64_MTE
+#if IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+	nop
+#else
 alternative_if ARM64_MTE
 	SET_PSTATE_TCO(0)
 alternative_else_nop_endif
+#endif
 #endif
 
 	/*
@@ -298,15 +365,6 @@ alternative_if ARM64_HAS_IRQ_PRIO_MASKING
 alternative_else_nop_endif
 
 	ldp	x21, x22, [sp, #S_PC]		// load ELR, SPSR
-
-	/* ================= Bowknot Check START ================= */
-	.if \el == 1
-	ldr     x23, [sp, #S_SP]		// Load 'Target SP' in regs->sp
-	add     x24, sp, #S_FRAME_SIZE  // Calculate 'Expected SP'
-	cmp     x23, x24
-	b.ne    .Lhecaton_restore_\@	// If regs->sp being modified -> bowknot support function found
-	.endif
-	/* ================= Bowknot Check END ================= */
 
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
 alternative_if_not ARM64_HAS_PAN
@@ -376,53 +434,6 @@ alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 
 	eret
 	.endif
-
-	/* ================= Bowknot Restore Start ================= */
-	.if \el == 1
-	.Lhecaton_restore_\@:
-	/* CONTEXT AT THIS POINT:
-	* x21 = ELR  (loaded before the check)
-	* x22 = SPSR (loaded before the check)
-	* x23 = New Target SP (loaded inside the check block)
-	* sp  = Old Stack Pointer
-	*/
-
-	mov     x29, sp
-
-	/* Switch Hardware SP to the Bowknot support function stack */
-	mov     sp, x23
-
-	msr     elr_el1, x21
-	msr     spsr_el1, x22
-
-	ldp     x0, x1, [x29, #16 * 0]
-	ldp     x2, x3, [x29, #16 * 1]
-	ldp     x4, x5, [x29, #16 * 2]
-	ldp     x6, x7, [x29, #16 * 3]
-	ldp     x8, x9, [x29, #16 * 4]
-	ldp     x10, x11, [x29, #16 * 5]
-	ldp     x12, x13, [x29, #16 * 6]
-	ldp     x14, x15, [x29, #16 * 7]
-	ldp     x16, x17, [x29, #16 * 8]
-	ldp     x18, x19, [x29, #16 * 9]
-	ldp     x20, x21, [x29, #16 * 10]
-	ldp     x22, x23, [x29, #16 * 11]
-	ldp     x24, x25, [x29, #16 * 12]
-	ldp     x26, x27, [x29, #16 * 13]
-
-	ldr     x28, [x29, #16 * 14]
-	ldr     lr, [x29, #S_LR]
-
-	/*
-	* Restore x29 (Frame Pointer)
-	* Note: After this instruction, we lose access to the old stack frame.
-	*/
-	ldr     x29, [x29, #16 * 14 + 8]
-
-	eret
-	.endif
-	/* ================= Bowknot Restore End ================= */
-
 	sb
 	.endm
 

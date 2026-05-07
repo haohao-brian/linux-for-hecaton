@@ -54,6 +54,13 @@
 #include <net/netns/generic.h>
 #include <net/dst_metadata.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+	 HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 MODULE_AUTHOR("Ville Nuorvala");
 MODULE_DESCRIPTION("IPv6 tunneling device");
 MODULE_LICENSE("GPL");
@@ -1889,7 +1896,12 @@ ip6_tnl_dev_init_gen(struct net_device *dev)
 
 	t->dev = dev;
 	t->net = dev_net(dev);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	dev->tstats = hakc_netdev_alloc_pcpu_stats(struct pcpu_sw_netstats,
+						   __claque_id, __color);
+#else
 	dev->tstats = netdev_alloc_pcpu_stats(struct pcpu_sw_netstats);
+#endif
 	if (!dev->tstats)
 		return -ENOMEM;
 

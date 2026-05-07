@@ -25,6 +25,11 @@
 #include <net/seg6_hmac.h>
 #endif
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+#endif
+
 bool seg6_validate_srh(struct ipv6_sr_hdr *srh, int len, bool reduced)
 {
 	unsigned int tlv_offset;
@@ -148,6 +153,10 @@ static int seg6_genl_sethmac(struct sk_buff *skb, struct genl_info *info)
 		err = -ENOMEM;
 		goto out_unlock;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    	hinfo = hakc_transfer_to_clique(hinfo, sizeof(*hinfo), __claque_id, __color,
+                                  false);
+#endif
 
 	memcpy(hinfo->secret, secret, slen);
 	hinfo->slen = slen;
@@ -183,10 +192,14 @@ static int seg6_genl_set_tunsrc(struct sk_buff *skb, struct genl_info *info)
 	if (!info->attrs[SEG6_ATTR_DST])
 		return -EINVAL;
 
-	val = nla_data(info->attrs[SEG6_ATTR_DST]);
-	t_new = kmemdup(val, sizeof(*val), GFP_KERNEL);
-	if (!t_new)
-		return -ENOMEM;
+    val = nla_data(info->attrs[SEG6_ATTR_DST]);
+    t_new = kmemdup(val, sizeof(*val), GFP_KERNEL);
+    if (!t_new)
+        return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    t_new = hakc_transfer_to_clique(t_new, sizeof(*val), __claque_id, __color,
+				       false);
+#endif
 
 	mutex_lock(&sdata->lock);
 
@@ -208,9 +221,15 @@ static int seg6_genl_get_tunsrc(struct sk_buff *skb, struct genl_info *info)
 	struct sk_buff *msg;
 	void *hdr;
 
-	msg = genlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
-	if (!msg)
-		return -ENOMEM;
+    msg = genlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+    if (!msg)
+        return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	msg = hakc_transfer_to_clique(msg, sizeof(*msg), __claque_id, __color,
+				     false);
+	msg->data = hakc_transfer_to_clique(msg->data, msg->data_len, __claque_id,
+					   __color, false);
+#endif
 
 	hdr = genlmsg_put(msg, info->snd_portid, info->snd_seq,
 			  &seg6_genl_family, 0, SEG6_CMD_GET_TUNSRC);
@@ -283,6 +302,10 @@ static int seg6_genl_dumphmac_start(struct netlink_callback *cb)
 		iter = kmalloc(sizeof(*iter), GFP_KERNEL);
 		if (!iter)
 			return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    		iter = hakc_transfer_to_clique(iter, sizeof(*iter), __claque_id, __color,
+                                  false);
+#endif
 
 		cb->args[0] = (long)iter;
 	}
@@ -358,21 +381,29 @@ static int seg6_genl_dumphmac(struct sk_buff *skb, struct netlink_callback *cb)
 
 #endif
 
-static int __net_init seg6_net_init(struct net *net)
+static int __net_init noinline seg6_net_init(struct net *net)
 {
 	struct seg6_pernet_data *sdata;
 
-	sdata = kzalloc(sizeof(*sdata), GFP_KERNEL);
-	if (!sdata)
-		return -ENOMEM;
+    sdata = kzalloc(sizeof(*sdata), GFP_KERNEL);
+    if (!sdata)
+        return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	sdata = hakc_transfer_to_clique(sdata, sizeof(*sdata), __claque_id, __color,
+				       false);
+#endif
 
 	mutex_init(&sdata->lock);
 
-	sdata->tun_src = kzalloc(sizeof(*sdata->tun_src), GFP_KERNEL);
-	if (!sdata->tun_src) {
-		kfree(sdata);
-		return -ENOMEM;
-	}
+    sdata->tun_src = kzalloc(sizeof(*sdata->tun_src), GFP_KERNEL);
+    if (!sdata->tun_src) {
+        kfree(sdata);
+        return -ENOMEM;
+    }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    sdata->tun_src = hakc_transfer_to_clique(sdata->tun_src, sizeof(*sdata->tun_src), __claque_id, __color,
+				       false);
+#endif
 
 	net->ipv6.seg6_data = sdata;
 
@@ -382,6 +413,18 @@ static int __net_init seg6_net_init(struct net *net)
 
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(seg6_net_init, int, struct net* net) {
+	int result;
+
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = seg6_net_init(net);
+
+	return result;
+}
+#endif
 
 static void __net_exit seg6_net_exit(struct net *net)
 {
@@ -396,7 +439,11 @@ static void __net_exit seg6_net_exit(struct net *net)
 }
 
 static struct pernet_operations ip6_segments_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(seg6_net_init),
+#else
 	.init = seg6_net_init,
+#endif
 	.exit = seg6_net_exit,
 };
 

@@ -20,23 +20,59 @@
 #include <asm/insn.h>
 #include <asm/sections.h>
 
+#include <linux/hakc.h>
+
 void *module_alloc(unsigned long size)
 {
 	u64 module_alloc_end = module_alloc_base + MODULES_VSIZE;
-	gfp_t gfp_mask = GFP_KERNEL;
+	if (IS_ENABLED(CONFIG_KASAN))
+		/* don't exceed the static module region - see below */
+		module_alloc_end = MODULES_END;
+	return module_alloc_bounds(size, module_alloc_base, module_alloc_end);
+}
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+void *mte_module_alloc_bounds(clique_color_t color, unsigned long size,
+			      u64 base, u64 end)
+{
+	void *result;
+
+	if (!VALID_COLOR(color)) {
+		return NULL;
+	}
+
+	size = HAKC_ROUND_UP(size);
+	//	result = module_alloc_bounds(size, base, end);
+	result = module_alloc(size);
+	if (result) {
+		hakc_color_address(result, color, size);
+	}
+
+	return result;
+}
+#endif
+
+void *module_alloc_bounds(unsigned long size, u64 base, u64 end)
+{
 	void *p;
+	gfp_t gfp_mask = GFP_KERNEL;
+	pgprot_t prot;
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	prot = PAGE_KERNEL_TAGGED;
+#else
+	prot = PAGE_KERNEL;
+#endif
+
+	//	printk(KERN_INFO "Allocating %ld bytes from [%llx -- %llx]\n", size,
+	//	       base, end);
 
 	/* Silence the initial allocation */
 	if (IS_ENABLED(CONFIG_ARM64_MODULE_PLTS))
 		gfp_mask |= __GFP_NOWARN;
 
-	if (IS_ENABLED(CONFIG_KASAN))
-		/* don't exceed the static module region - see below */
-		module_alloc_end = MODULES_END;
-
-	p = __vmalloc_node_range(size, MODULE_ALIGN, module_alloc_base,
-				module_alloc_end, gfp_mask, PAGE_KERNEL, 0,
-				NUMA_NO_NODE, __builtin_return_address(0));
+	p = __vmalloc_node_range(size, MODULE_ALIGN, base, end, gfp_mask, prot,
+				 0, NUMA_NO_NODE, __builtin_return_address(0));
 
 	if (!p && IS_ENABLED(CONFIG_ARM64_MODULE_PLTS) &&
 	    !IS_ENABLED(CONFIG_KASAN))
@@ -49,10 +85,9 @@ void *module_alloc(unsigned long size)
 		 * less likely that the module region gets exhausted, so we
 		 * can simply omit this fallback in that case.
 		 */
-		p = __vmalloc_node_range(size, MODULE_ALIGN, module_alloc_base,
-				module_alloc_base + SZ_2G, GFP_KERNEL,
-				PAGE_KERNEL, 0, NUMA_NO_NODE,
-				__builtin_return_address(0));
+		p = __vmalloc_node_range(size, MODULE_ALIGN, base, base + SZ_2G,
+					 gfp_mask, prot, 0, NUMA_NO_NODE,
+					 __builtin_return_address(0));
 
 	if (p && (kasan_module_alloc(p, size) < 0)) {
 		vfree(p);
@@ -242,7 +277,8 @@ static int reloc_insn_adrp(struct module *mod, Elf64_Shdr *sechdrs,
 		insn &= ~BIT(31);
 	} else {
 		/* out of range for ADR -> emit a veneer */
-		val = module_emit_veneer_for_adrp(mod, sechdrs, place, val & ~0xfff);
+		val = module_emit_veneer_for_adrp(mod, sechdrs, place,
+						  val & ~0xfff);
 		if (!val)
 			return -ENOEXEC;
 		insn = aarch64_insn_gen_branch_imm((u64)place, val,
@@ -253,10 +289,8 @@ static int reloc_insn_adrp(struct module *mod, Elf64_Shdr *sechdrs,
 	return 0;
 }
 
-int apply_relocate_add(Elf64_Shdr *sechdrs,
-		       const char *strtab,
-		       unsigned int symindex,
-		       unsigned int relsec,
+int apply_relocate_add(Elf64_Shdr *sechdrs, const char *strtab,
+		       unsigned int symindex, unsigned int relsec,
 		       struct module *me)
 {
 	unsigned int i;
@@ -269,12 +303,12 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 
 	for (i = 0; i < sechdrs[relsec].sh_size / sizeof(*rel); i++) {
 		/* loc corresponds to P in the AArch64 ELF document. */
-		loc = (void *)sechdrs[sechdrs[relsec].sh_info].sh_addr
-			+ rel[i].r_offset;
+		loc = (void *)sechdrs[sechdrs[relsec].sh_info].sh_addr +
+		      rel[i].r_offset;
 
 		/* sym is the ELF symbol we're referring to. */
-		sym = (Elf64_Sym *)sechdrs[symindex].sh_addr
-			+ ELF64_R_SYM(rel[i].r_info);
+		sym = (Elf64_Sym *)sechdrs[symindex].sh_addr +
+		      ELF64_R_SYM(rel[i].r_info);
 
 		/* val corresponds to (S + A) in the AArch64 ELF document. */
 		val = sym->st_value + rel[i].r_addend;
@@ -444,7 +478,8 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 
 			if (IS_ENABLED(CONFIG_ARM64_MODULE_PLTS) &&
 			    ovf == -ERANGE) {
-				val = module_emit_plt_entry(me, sechdrs, loc, &rel[i], sym);
+				val = module_emit_plt_entry(me, sechdrs, loc,
+							    &rel[i], sym);
 				if (!val)
 					return -ENOEXEC;
 				ovf = reloc_insn_imm(RELOC_OP_PREL, loc, val, 2,
@@ -460,20 +495,18 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 
 		if (overflow_check && ovf == -ERANGE)
 			goto overflow;
-
 	}
 
 	return 0;
 
 overflow:
-	pr_err("module %s: overflow in relocation type %d val %Lx\n",
-	       me->name, (int)ELF64_R_TYPE(rel[i].r_info), val);
+	pr_err("module %s: overflow in relocation type %d val %Lx\n", me->name,
+	       (int)ELF64_R_TYPE(rel[i].r_info), val);
 	return -ENOEXEC;
 }
 
 static const Elf_Shdr *find_section(const Elf_Ehdr *hdr,
-				    const Elf_Shdr *sechdrs,
-				    const char *name)
+				    const Elf_Shdr *sechdrs, const char *name)
 {
 	const Elf_Shdr *s, *se;
 	const char *secstrs = (void *)hdr + sechdrs[hdr->e_shstrndx].sh_offset;
@@ -491,8 +524,7 @@ static inline void __init_plt(struct plt_entry *plt, unsigned long addr)
 	*plt = get_plt_entry(addr, plt);
 }
 
-static int module_init_ftrace_plt(const Elf_Ehdr *hdr,
-				  const Elf_Shdr *sechdrs,
+static int module_init_ftrace_plt(const Elf_Ehdr *hdr, const Elf_Shdr *sechdrs,
 				  struct module *mod)
 {
 #if defined(CONFIG_ARM64_MODULE_PLTS) && defined(CONFIG_DYNAMIC_FTRACE)
@@ -515,8 +547,7 @@ static int module_init_ftrace_plt(const Elf_Ehdr *hdr,
 	return 0;
 }
 
-int module_finalize(const Elf_Ehdr *hdr,
-		    const Elf_Shdr *sechdrs,
+int module_finalize(const Elf_Ehdr *hdr, const Elf_Shdr *sechdrs,
 		    struct module *me)
 {
 	const Elf_Shdr *s;

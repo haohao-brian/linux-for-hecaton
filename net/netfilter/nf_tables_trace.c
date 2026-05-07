@@ -18,6 +18,12 @@
 #include <net/netfilter/nf_tables_core.h>
 #include <net/netfilter/nf_tables.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(3, BLUE_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE));
+#endif
+
 #define NFT_TRACETYPE_LL_HSIZE		20
 #define NFT_TRACETYPE_NETWORK_HSIZE	40
 #define NFT_TRACETYPE_TRANSPORT_HSIZE	20
@@ -217,6 +223,12 @@ void nft_trace_notify(struct nft_traceinfo *info)
 	skb = nlmsg_new(size, GFP_ATOMIC);
 	if (!skb)
 		return;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb  = hakc_transfer_to_clique(skb, sizeof(*skb),
+                            __claque_id, __color, false);
+skb->data = skb->head = hakc_transfer_to_clique(skb->data, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	event = nfnl_msg_type(NFNL_SUBSYS_NFTABLES, NFT_MSG_TRACE);
 	nlh = nlmsg_put(skb, 0, 0, event, sizeof(struct nfgenmsg), 0);

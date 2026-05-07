@@ -1578,6 +1578,46 @@ static struct pcpu_chunk *pcpu_chunk_addr_search(void *addr)
 	return pcpu_get_page_chunk(pcpu_addr_to_page(addr));
 }
 
+bool is_dynamic_percpu_address(unsigned long addr) {
+	struct pcpu_chunk *chunk, *next;
+	int slot;
+	enum pcpu_chunk_type type;
+	struct list_head *pcpu_slot;
+
+	void __percpu *base = __pcpu_ptr_to_addr(addr);
+
+	/* is it in the dynamic region (first chunk)? */
+	if (pcpu_addr_in_chunk(pcpu_first_chunk, base)) {
+		return true;
+	}
+
+	for (type = 0; type < PCPU_NR_CHUNK_TYPES; type++) {
+		pcpu_slot = pcpu_chunk_list(type);
+		for (slot = 0; slot < pcpu_nr_slots; slot++) {
+			list_for_each_entry_safe (chunk, next, &pcpu_slot[slot],
+						  list) {
+				if (pcpu_addr_in_chunk(chunk, base)) {
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+EXPORT_SYMBOL(is_dynamic_percpu_address);
+
+void *pcpu_ptr_to_addr(void* __percpu ptr)
+{
+	return __pcpu_ptr_to_addr(ptr);
+}
+EXPORT_SYMBOL(pcpu_ptr_to_addr);
+
+void *addr_to_pcpu_ptr(void *ptr)
+{
+	return __addr_to_pcpu_ptr(ptr);
+}
+EXPORT_SYMBOL(addr_to_pcpu_ptr);
+
 #ifdef CONFIG_MEMCG_KMEM
 static enum pcpu_chunk_type pcpu_memcg_pre_alloc_hook(size_t size, gfp_t gfp,
 						     struct obj_cgroup **objcgp)

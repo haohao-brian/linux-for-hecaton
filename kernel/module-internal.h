@@ -7,6 +7,7 @@
 
 #include <linux/elf.h>
 #include <asm/module.h>
+#include <linux/hakc.h>
 
 struct load_info {
 	const char *name;
@@ -20,11 +21,15 @@ struct load_info {
 	struct _ddebug *debug;
 	unsigned int num_debug;
 	bool sig_ok;
+
 #ifdef CONFIG_KALLSYMS
 	unsigned long mod_kallsyms_init_off;
 #endif
 	struct {
 		unsigned int sym, str, mod, vers, info, pcpu;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+        unsigned int hakc_pcpu[HAKC_COLOR_COUNT];
+#endif
 	} index;
 };
 

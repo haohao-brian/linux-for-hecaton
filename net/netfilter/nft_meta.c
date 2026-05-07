@@ -27,6 +27,12 @@
 
 #include <uapi/linux/netfilter_bridge.h> /* NF_BR_PRE_ROUTING */
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(3, BLUE_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE));
+#endif
+
 #define NFT_META_SECS_PER_MINUTE	60
 #define NFT_META_SECS_PER_HOUR		3600
 #define NFT_META_SECS_PER_DAY		86400
@@ -851,6 +857,9 @@ static int nft_secmark_obj_init(const struct nft_ctx *ctx,
 	priv->ctx = nla_strdup(tb[NFTA_SECMARK_CTX], GFP_KERNEL);
 	if (!priv->ctx)
 		return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  priv->ctx = HAKC_TRANSFER_string(priv->ctx, __claque_id, __color);  
+#endif
 
 	err = nft_secmark_compute_secid(priv);
 	if (err) {

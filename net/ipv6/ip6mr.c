@@ -50,6 +50,13 @@
 
 #include <linux/nospec.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+	 HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 struct ip6mr_rule {
 	struct fib_rule		common;
 };
@@ -231,6 +238,10 @@ static int __net_init ip6mr_rules_init(struct net *net)
 	ops = fib_rules_register(&ip6mr_rules_ops_template, net);
 	if (IS_ERR(ops))
 		return PTR_ERR(ops);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	ops = hakc_transfer_to_clique(ops, sizeof(*ops), __claque_id,
+				      __color, false);
+#endif
 
 	INIT_LIST_HEAD(&net->ipv6.mr6_tables);
 
@@ -361,6 +372,10 @@ static const struct rhashtable_params ip6mr_rht_params = {
 static void ip6mr_new_table_set(struct mr_table *mrt,
 				struct net *net)
 {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	net = hakc_sign_pointer_with_color(net, __claque_id, false);
+	mrt = hakc_sign_pointer_with_color(mrt, __claque_id, false);
+#endif
 #ifdef CONFIG_IPV6_MROUTE_MULTIPLE_TABLES
 	list_add_tail_rcu(&mrt->list, &net->ipv6.mr6_tables);
 #endif
@@ -980,6 +995,10 @@ static struct mfc6_cache *ip6mr_cache_alloc(void)
 	struct mfc6_cache *c = kmem_cache_zalloc(mrt_cachep, GFP_KERNEL);
 	if (!c)
 		return NULL;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	c = hakc_transfer_to_clique(c, sizeof(struct mfc6_cache),
+				    __claque_id, __color, false);
+#endif
 	c->_c.mfc_un.res.last_assert = jiffies - MFC_ASSERT_THRESH - 1;
 	c->_c.mfc_un.res.minvif = MAXMIFS;
 	c->_c.free = ip6mr_cache_free_rcu;
@@ -992,6 +1011,10 @@ static struct mfc6_cache *ip6mr_cache_alloc_unres(void)
 	struct mfc6_cache *c = kmem_cache_zalloc(mrt_cachep, GFP_ATOMIC);
 	if (!c)
 		return NULL;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	c = hakc_transfer_to_clique(c, sizeof(struct mfc6_cache),
+				   __claque_id, __color, false);
+#endif
 	skb_queue_head_init(&c->_c.mfc_un.unres.unresolved);
 	c->_c.mfc_un.unres.expires = jiffies + 10 * HZ;
 	return c;
@@ -1230,7 +1253,7 @@ static int ip6mr_mfc_delete(struct mr_table *mrt, struct mf6cctl *mfc,
 	return 0;
 }
 
-static int ip6mr_device_event(struct notifier_block *this,
+static int noinline ip6mr_device_event(struct notifier_block *this,
 			      unsigned long event, void *ptr)
 {
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
@@ -1267,8 +1290,44 @@ static int ip6mr_dump(struct net *net, struct notifier_block *nb,
 		       ip6mr_mr_table_iter, &mrt_lock, extack);
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(ip6mr_device_event, static int,
+				  struct notifier_block *this,
+				  unsigned long event,
+				  void *ptr)
+{
+	int result;
+	void* prot_v;
+	clique_color_t dev_color;
+	claque_id_t dev_claque;
+
+	struct netdev_notifier_info *info = (struct netdev_notifier_info*)ptr;
+
+	dev_color = get_hakc_address_color(info->dev);
+	dev_claque = get_hakc_address_claque(info->dev);
+	this = hakc_transfer_to_clique(this, sizeof(*this), __claque_id,
+				       __color, false);
+	info->dev = hakc_transfer_to_clique(info->dev, sizeof(struct
+						    net_device),
+					    __claque_id, __color, false);
+	prot_v = hakc_transfer_to_clique(info, sizeof(struct netdev_notifier_info),
+					 __claque_id, __color, false);
+
+	result = ip6mr_device_event(this, event, prot_v);
+
+	info->dev = hakc_transfer_to_clique(info->dev,
+					    sizeof(struct net_device),
+					    dev_claque, dev_color, false);
+	return result;
+}
+#endif
+
 static struct notifier_block ip6_mr_notifier = {
-	.notifier_call = ip6mr_device_event
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.notifier_call = HAKC_OUTSIDE_TRANSFER_FUNC(ip6mr_device_event),
+#else
+	.notifier_call = ip6mr_device_event,
+#endif
 };
 
 static const struct fib_notifier_ops ip6mr_notifier_ops_template = {
@@ -1300,7 +1359,7 @@ static void __net_exit ip6mr_notifier_exit(struct net *net)
 }
 
 /* Setup for IP multicast routing */
-static int __net_init ip6mr_net_init(struct net *net)
+static int __net_init noinline ip6mr_net_init(struct net *net)
 {
 	int err;
 
@@ -1345,8 +1404,29 @@ static void __net_exit ip6mr_net_exit(struct net *net)
 	ip6mr_notifier_exit(net);
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(ip6mr_net_init, int, struct net* net) {
+	int result;
+
+	struct proc_dir_entry *orig_proc_net = net->proc_net;
+	/* NB: The sizes were determined at run time */
+	net->proc_net = hakc_transfer_to_clique(net->proc_net, 172,
+						__claque_id, __color, false);
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = ip6mr_net_init(net);
+	HAKC_GET_SAFE_PTR(net)->proc_net = orig_proc_net;
+
+	return result;
+}
+#endif
+
 static struct pernet_operations ip6mr_net_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(ip6mr_net_init),
+#else
 	.init = ip6mr_net_init,
+#endif
 	.exit = ip6mr_net_exit,
 };
 
@@ -2407,6 +2487,14 @@ static void mr6_netlink_event(struct mr_table *mrt, struct mfc6_cache *mfc,
 			GFP_ATOMIC);
 	if (!skb)
 		goto errout;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+				     false);
+	skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+						       skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);
+#endif
 
 	err = ip6mr_fill_mroute(mrt, skb, 0, 0, mfc, cmd, 0);
 	if (err < 0)
@@ -2454,6 +2542,14 @@ static void mrt6msg_netlink_event(struct mr_table *mrt, struct sk_buff *pkt)
 	skb = nlmsg_new(mrt6msg_netlink_msgsize(payloadlen), GFP_ATOMIC);
 	if (!skb)
 		goto errout;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+				     false);
+	skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+						       skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);
+#endif
 
 	nlh = nlmsg_put(skb, 0, 0, RTM_NEWCACHEREPORT,
 			sizeof(struct rtgenmsg), 0);

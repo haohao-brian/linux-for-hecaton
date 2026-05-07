@@ -273,9 +273,13 @@ static inline void *freelist_dereference(const struct kmem_cache *s,
 			    (unsigned long)ptr_addr);
 }
 
+extern struct kmem_cache *skbuff_head_cache;
 static inline void *get_freepointer(struct kmem_cache *s, void *object)
 {
-	return freelist_dereference(s, object + s->offset);
+	void* ret;
+	object = kasan_reset_tag(object);
+	ret = freelist_dereference(s, object + s->offset);
+	return ret;
 }
 
 static void prefetch_freepointer(const struct kmem_cache *s, void *object)
@@ -303,7 +307,6 @@ static inline void set_freepointer(struct kmem_cache *s, void *object, void *fp)
 #ifdef CONFIG_SLAB_FREELIST_HARDENED
 	BUG_ON(object == fp); /* naive detection of double free or corruption */
 #endif
-
 	*(void **)freeptr_addr = freelist_ptr(s, fp, freeptr_addr);
 }
 
@@ -2663,6 +2666,8 @@ static void *___slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 	void *freelist;
 	struct page *page;
 
+	void *tmp;
+
 	stat(s, ALLOC_SLOWPATH);
 
 	page = c->page;
@@ -2725,6 +2730,7 @@ load_freelist:
 	 * That page must be frozen for per cpu allocations to work.
 	 */
 	VM_BUG_ON(!c->page->frozen);
+	tmp = c->freelist;
 	c->freelist = get_freepointer(s, freelist);
 	c->tid = next_tid(c->tid);
 	return freelist;
@@ -2901,7 +2907,12 @@ static __always_inline void *slab_alloc(struct kmem_cache *s,
 
 void *kmem_cache_alloc(struct kmem_cache *s, gfp_t gfpflags)
 {
-	void *ret = slab_alloc(s, gfpflags, _RET_IP_);
+	void *ret;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	s = HAKC_GET_SAFE_PTR(s);
+#endif
+
+	ret = slab_alloc(s, gfpflags, _RET_IP_);
 
 	trace_kmem_cache_alloc(_RET_IP_, ret, s->object_size,
 				s->size, gfpflags);
@@ -3152,6 +3163,11 @@ void ___cache_free(struct kmem_cache *cache, void *x, unsigned long addr)
 
 void kmem_cache_free(struct kmem_cache *s, void *x)
 {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	if(!ZERO_OR_NULL_PTR(x)) {
+		x = HAKC_GET_SAFE_PTR(x);
+	}
+#endif
 	s = cache_from_obj(s, x);
 	if (!s)
 		return;
@@ -3254,9 +3270,18 @@ int build_detached_freelist(struct kmem_cache *s, size_t size,
 /* Note that interrupts must be enabled when calling this function. */
 void kmem_cache_free_bulk(struct kmem_cache *s, size_t size, void **p)
 {
+	size_t i;
 	if (WARN_ON(!size))
 		return;
 
+	p = (void **)hakc_safe_ptr(p);
+	if (!p)
+		return;
+
+	for (i = 0; i < size; i++) {
+		if (p[i])
+			p[i] = hakc_safe_ptr(p[i]);
+	}
 	memcg_slab_free_hook(s, p, size);
 	do {
 		struct detached_freelist df;
@@ -4103,7 +4128,15 @@ EXPORT_SYMBOL(__ksize);
 void kfree(const void *x)
 {
 	struct page *page;
-	void *object = (void *)x;
+	void *object;
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	if(!ZERO_OR_NULL_PTR(x)) {
+		x = HAKC_GET_SAFE_PTR(x);
+	}
+#endif
+
+	object = (void *)x;
 
 	trace_kfree(_RET_IP_, x);
 

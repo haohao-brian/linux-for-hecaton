@@ -926,14 +926,14 @@ static void check_section(const char *modname, struct elf_info *elf,
 
 #define ALL_INIT_DATA_SECTIONS \
 	".init.setup", ".init.rodata", ".meminit.rodata", \
-	".init.data", ".meminit.data"
+	".init.data", ".meminit.data", ".init.data.hakc.*"
 #define ALL_EXIT_DATA_SECTIONS \
 	".exit.data", ".memexit.data"
 
 #define ALL_INIT_TEXT_SECTIONS \
-	".init.text", ".meminit.text"
+	".init.text", ".meminit.text", ".init.text.hakc.*"
 #define ALL_EXIT_TEXT_SECTIONS \
-	".exit.text", ".memexit.text"
+	".exit.text", ".memexit.text", ".exit.text.hakc.*"
 
 #define ALL_PCI_INIT_SECTIONS	\
 	".pci_fixup_early", ".pci_fixup_header", ".pci_fixup_final", \
@@ -946,12 +946,11 @@ static void check_section(const char *modname, struct elf_info *elf,
 #define ALL_INIT_SECTIONS INIT_SECTIONS, ALL_XXXINIT_SECTIONS
 #define ALL_EXIT_SECTIONS EXIT_SECTIONS, ALL_XXXEXIT_SECTIONS
 
-#define DATA_SECTIONS ".data", ".data.rel"
+#define DATA_SECTIONS ".data", ".data.rel", ".data.hakc.*"
 #define TEXT_SECTIONS ".text", ".text.unlikely", ".sched.text", \
-		".kprobes.text", ".cpuidle.text", ".noinstr.text"
+		".kprobes.text", ".cpuidle.text", ".noinstr.text", ".text.hakc.*"
 #define OTHER_TEXT_SECTIONS ".ref.text", ".head.text", ".spinlock.text", \
-		".fixup", ".entry.text", ".exception.text", ".text.*", \
-		".coldtext"
+		".fixup", ".entry.text", ".exception.text", ".text.*", ".coldtext"
 
 #define INIT_SECTIONS      ".init.*"
 #define MEM_INIT_SECTIONS  ".meminit.*"

@@ -21,6 +21,14 @@
 #include <net/netfilter/nf_log.h>
 #include <net/netfilter/nft_meta.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(3, BLUE_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+         HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 static noinline void __nft_trace_packet(struct nft_traceinfo *info,
 					const struct nft_chain *chain,
 					enum nft_trace_types type)
@@ -193,6 +201,9 @@ next_rule:
 
 			if (regs.verdict.code != NFT_CONTINUE)
 				break;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+      expr = hakc_sign_pointer((void*)expr, __claque_id, __color, false);
+#endif
 		}
 
 		switch (regs.verdict.code) {
@@ -279,15 +290,36 @@ static struct nft_object_type *nft_basic_objects[] = {
 int __init nf_tables_core_module_init(void)
 {
 	int err, i, j = 0;
-
 	for (i = 0; i < ARRAY_SIZE(nft_basic_objects); i++) {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+    struct nft_object_type * signed_ptr = hakc_transfer_to_clique(
+                                                                nft_basic_objects[i], 
+                                                                sizeof(*nft_basic_objects[i]),
+                                                                __claque_id,
+                                                                __color,
+                                                                false);
+		err = nft_register_obj(signed_ptr);
+#else
+
 		err = nft_register_obj(nft_basic_objects[i]);
+#endif
 		if (err)
 			goto err;
 	}
 
 	for (j = 0; j < ARRAY_SIZE(nft_basic_types); j++) {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+    struct nft_expr_type * signed_ptr = hakc_transfer_to_clique(
+                                                                nft_basic_types[j], 
+                                                                sizeof(*nft_basic_types[j]),
+                                                                __claque_id,
+                                                                __color,
+                                                                false);
+		err = nft_register_expr(signed_ptr);
+#else
+
 		err = nft_register_expr(nft_basic_types[j]);
+#endif
 		if (err)
 			goto err;
 	}

@@ -3741,6 +3741,11 @@ void kfree(const void *objp)
 	struct kmem_cache *c;
 	unsigned long flags;
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	if(!ZERO_OR_NULL_PTR(objp))
+		objp = HAKC_GET_SAFE_PTR(objp);
+#endif
+
 	trace_kfree(_RET_IP_, objp);
 
 	if (unlikely(ZERO_OR_NULL_PTR(objp)))

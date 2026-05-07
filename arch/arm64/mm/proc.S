@@ -45,6 +45,12 @@
 #define TCR_KASAN_FLAGS 0
 #endif
 
+#ifdef CONFIG_PAC_MTE_COMPART
+#define TCR_HAKC_FLAGS TCR_TBI1
+#else
+#define TCR_HAKC_FLAGS 0
+#endif
+
 /*
  * Default MAIR_EL1. MT_NORMAL_TAGGED is initially mapped as Normal memory and
  * changed during __cpu_setup to Normal Tagged if the system supports MTE.
@@ -440,6 +446,7 @@ SYM_FUNC_START(__cpu_setup)
 	mov	x10, #MAIR_ATTR_NORMAL_TAGGED
 	bfi	x5, x10, #(8 *  MT_NORMAL_TAGGED), #8
 
+#if !IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
 	/* initialize GCR_EL1: all non-zero tags excluded by default */
 	mov	x10, #(SYS_GCR_EL1_RRND | SYS_GCR_EL1_EXCL_MASK)
 	msr_s	SYS_GCR_EL1, x10
@@ -447,6 +454,7 @@ SYM_FUNC_START(__cpu_setup)
 	/* clear any pending tag check faults in TFSR*_EL1 */
 	msr_s	SYS_TFSR_EL1, xzr
 	msr_s	SYS_TFSRE0_EL1, xzr
+#endif
 1:
 #endif
 	msr	mair_el1, x5
@@ -456,7 +464,7 @@ SYM_FUNC_START(__cpu_setup)
 	 */
 	mov_q	x10, TCR_TxSZ(VA_BITS) | TCR_CACHE_FLAGS | TCR_SMP_FLAGS | \
 			TCR_TG_FLAGS | TCR_KASLR_FLAGS | TCR_ASID16 | \
-			TCR_TBI0 | TCR_A1 | TCR_KASAN_FLAGS
+			TCR_TBI0 | TCR_A1 | TCR_KASAN_FLAGS | TCR_HAKC_FLAGS
 	tcr_clear_errata_bits x10, x9, x5
 
 #ifdef CONFIG_ARM64_VA_BITS_52

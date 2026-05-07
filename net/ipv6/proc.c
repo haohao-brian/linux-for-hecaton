@@ -26,6 +26,11 @@
 #include <net/transp_v6.h>
 #include <net/ipv6.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+#endif
+
 #define MAX4(a, b, c, d) \
 	max_t(u32, max_t(u32, a, b), max_t(u32, c, d))
 #define SNMP_MIB_MAX MAX4(UDP_MIB_MAX, TCP_MIB_MAX, \
@@ -272,7 +277,7 @@ int snmp6_unregister_dev(struct inet6_dev *idev)
 	return 0;
 }
 
-static int __net_init ipv6_proc_init_net(struct net *net)
+static int __net_init noinline ipv6_proc_init_net(struct net *net)
 {
 	if (!proc_create_net_single("sockstat6", 0444, net->proc_net,
 			sockstat6_seq_show, NULL))
@@ -294,6 +299,23 @@ proc_snmp6_fail:
 	return -ENOMEM;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(ipv6_proc_init_net, int, struct net* net) {
+	int result;
+
+	struct proc_dir_entry *orig_proc_net = net->proc_net;
+	/* NB: The sizes were determined at run time */
+	net->proc_net = hakc_transfer_to_clique(net->proc_net, 172,
+						__claque_id, __color, false);
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = ipv6_proc_init_net(net);
+	HAKC_GET_SAFE_PTR(net)->proc_net = orig_proc_net;
+
+	return result;
+}
+#endif
+
 static void __net_exit ipv6_proc_exit_net(struct net *net)
 {
 	remove_proc_entry("sockstat6", net->proc_net);
@@ -302,7 +324,11 @@ static void __net_exit ipv6_proc_exit_net(struct net *net)
 }
 
 static struct pernet_operations ipv6_proc_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(ipv6_proc_init_net),
+#else
 	.init = ipv6_proc_init_net,
+#endif
 	.exit = ipv6_proc_exit_net,
 };
 

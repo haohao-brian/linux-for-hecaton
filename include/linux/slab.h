@@ -18,6 +18,7 @@
 #include <linux/workqueue.h>
 #include <linux/percpu-refcount.h>
 
+#include <linux/hakc.h>
 
 /*
  * Flags to pass to kmem_cache_create().
@@ -663,6 +664,21 @@ static inline void *kzalloc(size_t size, gfp_t flags)
 {
 	return kmalloc(size, flags | __GFP_ZERO);
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+static inline void *mte_kzalloc(size_t size, gfp_t flags) {
+    void* result = kmalloc(size, flags | __GFP_ZERO);
+    if(result) {
+        result = hakc_transfer_data_to_target((void*)_RET_IP_, result, size,
+                false);
+    }
+    return result;
+    }
+#else
+static inline void *mte_kzalloc(size_t size, gfp_t flags) {
+    return kzalloc(size, flags);
+}
+#endif
 
 /**
  * kzalloc_node - allocate zeroed memory from a particular memory node.

@@ -5,16 +5,16 @@
 #ifndef __ASM_MTE_H
 #define __ASM_MTE_H
 
-#define MTE_GRANULE_SIZE	UL(16)
-#define MTE_GRANULE_MASK	(~(MTE_GRANULE_SIZE - 1))
-#define MTE_TAG_SHIFT		56
-#define MTE_TAG_SIZE		4
+#include <asm/mte-def.h>
 
 #ifndef __ASSEMBLY__
 
 #include <linux/page-flags.h>
+#include <linux/types.h>
 
 #include <asm/pgtable-types.h>
+
+extern u64 gcr_kernel_excl;
 
 void mte_clear_page_tags(void *addr);
 unsigned long mte_copy_tags_from_user(void *to, const void __user *from,
@@ -45,7 +45,69 @@ long get_mte_ctrl(struct task_struct *task);
 int mte_ptrace_copy_tags(struct task_struct *child, long request,
 			 unsigned long addr, unsigned long data);
 
+#define MTE_DISABLED 0//(__is_defined(CONFIG_PAC_MTE_EVAL_CODEGEN) && \
+			!IS_ENABLED(CONFIG_PAC_MTE_EVAL_ENABLE_MTE))
+
+static inline void mte_assign_mem_tag_range(void *addr, size_t size)
+{
+#if MTE_DISABLED
+	return;
 #else
+	u64 _addr = (u64)addr;
+	u64 _end = _addr + size;
+
+	/*
+	 * This function must be invoked from an MTE enabled context.
+	 *
+	 * Note: The address must be non-NULL and MTE_GRANULE_SIZE aligned and
+	 * size must be non-zero and MTE_GRANULE_SIZE aligned.
+	 */
+	do {
+		/*
+		 * 'asm volatile' is required to prevent the compiler to move
+		 * the statement outside of the loop.
+		 */
+		#if 0//IS_ENABLED(CONFIG_PAC_MTE_EVAL_CODEGEN)
+		#if !IS_ENABLED(CONFIG_PAC_MTE_MTE_MEMORY_BARRIER)
+		asm volatile(__MTE_PREAMBLE
+			     "ldr x16, =tag_clobber_memory\n\t"
+			     "mov x17, %0\n\t"
+			     "lsr x17, x17, #49\n\t"
+			     "str %0, [x16]\n\t"
+			     :
+			     : "r" (_addr)
+			     : "memory");
+		#else
+		asm volatile(__MTE_PREAMBLE
+			     "ldr x16, [%0]\n\t"
+			     "mov x17, %0\n\t"
+			     "lsr x17, x17, #49\n\t"
+			     "dmb ishld\n\t"
+			     "str x16, [%0]\n\t"
+			     :
+			     : "r" (_addr)
+			     : "memory");
+		#endif
+		#else
+		asm volatile(__MTE_PREAMBLE "stg %0, [%0]"
+			     :
+			     : "r" (_addr)
+			     : "memory");
+		#endif
+
+		_addr += MTE_GRANULE_SIZE;
+	} while (_addr < _end);
+#endif
+}
+
+#define mte_get_ptr_tag(ptr)	((u8)(((u64)(ptr)) >> MTE_TAG_SHIFT))
+u8 mte_get_mem_tag(void *addr);
+u8 mte_get_random_tag(void);
+void *mte_set_mem_tag_range(void *addr, size_t size, u8 tag);
+
+void mte_init_tags(u64 max_tag);
+
+#else /* CONFIG_ARM64_MTE */
 
 /* unused if !CONFIG_ARM64_MTE, silence the compiler */
 #define PG_mte_tagged	0
@@ -80,7 +142,29 @@ static inline int mte_ptrace_copy_tags(struct task_struct *child,
 	return -EIO;
 }
 
-#endif
+static inline void mte_assign_mem_tag_range(void *addr, size_t size)
+{
+}
+
+#define mte_get_ptr_tag(ptr)	0xFF
+static inline u8 mte_get_mem_tag(void *addr)
+{
+	return 0xFF;
+}
+static inline u8 mte_get_random_tag(void)
+{
+	return 0xFF;
+}
+static inline void *mte_set_mem_tag_range(void *addr, size_t size, u8 tag)
+{
+	return addr;
+}
+
+static inline void mte_init_tags(u64 max_tag)
+{
+}
+
+#endif /* CONFIG_ARM64_MTE */
 
 #endif /* __ASSEMBLY__ */
 #endif /* __ASM_MTE_H  */

@@ -16,6 +16,11 @@
 #include <linux/sockptr.h>
 #include <net/net_namespace.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+#include <net/sock.h>
+#endif
+
 static inline int NF_DROP_GETERR(int verdict)
 {
 	return -(verdict >> NF_VERDICT_QBITS);

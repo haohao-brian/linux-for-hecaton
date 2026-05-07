@@ -520,7 +520,6 @@ EXPORT_SYMBOL_GPL(nf_hook_entries_delete_raw);
 int nf_register_net_hook(struct net *net, const struct nf_hook_ops *reg)
 {
 	int err;
-
 	if (reg->pf == NFPROTO_INET) {
 		if (reg->hooknum == NF_INET_INGRESS) {
 			err = __nf_register_net_hook(net, NFPROTO_INET, reg);

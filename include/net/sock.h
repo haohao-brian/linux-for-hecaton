@@ -2530,6 +2530,17 @@ struct net *sock_net(const struct sock *sk)
 	return read_pnet(&sk->sk_net);
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+static inline struct net* HAKC_OUTSIDE_TRANSFER_FUNC(sock_net)(const struct sock *sk) {
+	return HAKC_OUTSIDE_TRANSFER_FUNC(read_pnet)(&sk->sk_net);
+}
+static inline
+void HAKC_OUTSIDE_TRANSFER_FUNC(sock_net_set)(struct sock *sk, struct net *net)
+{
+	HAKC_OUTSIDE_TRANSFER_FUNC(write_pnet)(&sk->sk_net, net);
+}
+#endif
+
 static inline
 void sock_net_set(struct sock *sk, struct net *net)
 {

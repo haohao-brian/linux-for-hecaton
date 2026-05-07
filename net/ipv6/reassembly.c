@@ -58,6 +58,12 @@
 #include <net/ipv6_frag.h>
 #include <net/inet_ecn.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+#endif
+
+
 static const char ip6_frag_cache_name[] = "ip6-frags";
 
 static u8 ip6_frag_ecn(const struct ipv6hdr *ipv6h)
@@ -450,10 +456,18 @@ static int __net_init ip6_frags_ns_sysctl_register(struct net *net)
 	struct ctl_table_header *hdr;
 
 	table = ip6_frags_ns_ctl_table;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	table = hakc_sign_pointer_with_color(table, __claque_id, false);
+#endif
+
 	if (!net_eq(net, &init_net)) {
 		table = kmemdup(table, sizeof(ip6_frags_ns_ctl_table), GFP_KERNEL);
 		if (!table)
 			goto err_alloc;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+		table = hakc_transfer_to_clique(table, sizeof(ip6_frags_ns_ctl_table),
+					       __claque_id, __color,false);
+#endif
 
 	}
 	table[0].data	= &net->ipv6.fqdir->high_thresh;
@@ -519,13 +533,17 @@ static void ip6_frags_sysctl_unregister(void)
 }
 #endif
 
-static int __net_init ipv6_frags_init_net(struct net *net)
+static int __net_init noinline ipv6_frags_init_net(struct net *net)
 {
 	int res;
 
-	res = fqdir_init(&net->ipv6.fqdir, &ip6_frags, net);
-	if (res < 0)
-		return res;
+    res = fqdir_init(&net->ipv6.fqdir, &ip6_frags, net);
+    if (res < 0)
+        return res;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	net->ipv6.fqdir = hakc_transfer_to_clique(net->ipv6.fqdir, sizeof(*net->ipv6.fqdir), __claque_id,
+					    __color, false);
+#endif
 
 	net->ipv6.fqdir->high_thresh = IPV6_FRAG_HIGH_THRESH;
 	net->ipv6.fqdir->low_thresh = IPV6_FRAG_LOW_THRESH;
@@ -536,6 +554,18 @@ static int __net_init ipv6_frags_init_net(struct net *net)
 		fqdir_exit(net->ipv6.fqdir);
 	return res;
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(ipv6_frags_init_net, int, struct net* net) {
+	int result;
+
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = ipv6_frags_init_net(net);
+
+	return result;
+}
+#endif
 
 static void __net_exit ipv6_frags_pre_exit_net(struct net *net)
 {
@@ -549,7 +579,11 @@ static void __net_exit ipv6_frags_exit_net(struct net *net)
 }
 
 static struct pernet_operations ip6_frags_ops = {
-	.init		= ipv6_frags_init_net,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(ipv6_frags_init_net),
+#else
+	.init = ipv6_frags_init_net,
+#endif
 	.pre_exit	= ipv6_frags_pre_exit_net,
 	.exit		= ipv6_frags_exit_net,
 };

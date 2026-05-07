@@ -91,7 +91,13 @@ endif
 
 KBUILD_CFLAGS += $(branch-prot-flags-y)
 
-ifeq ($(CONFIG_AS_HAS_ARMV8_4), y)
+ifeq ($(CONFIG_PAC_MTE_COMPART), y)
+asm-arch := armv8.5-a+memtag
+KBUILD_CFLAGS += -Xclang
+KBUILD_CFLAGS += -load
+KBUILD_CFLAGS += -Xclang
+KBUILD_CFLAGS += $(srctree)/scripts/pac-mte/libPMCPass.so
+else ifeq ($(CONFIG_AS_HAS_ARMV8_4), y)
 # make sure to pass the newest target architecture to -march.
 asm-arch := armv8.4-a
 endif

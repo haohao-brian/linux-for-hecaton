@@ -69,13 +69,13 @@ static bool in_init(const struct module *mod, void *loc)
 	return (u64)loc - (u64)mod->init_layout.base < mod->init_layout.size;
 }
 
-u64 module_emit_plt_entry(struct module *mod, Elf64_Shdr *sechdrs,
-			  void *loc, const Elf64_Rela *rela,
-			  Elf64_Sym *sym)
+u64 module_emit_plt_entry(struct module *mod, Elf64_Shdr *sechdrs, void *loc,
+			  const Elf64_Rela *rela, Elf64_Sym *sym)
 {
-	struct mod_plt_sec *pltsec = !in_init(mod, loc) ? &mod->arch.core :
-							  &mod->arch.init;
-	struct plt_entry *plt = (struct plt_entry *)sechdrs[pltsec->plt_shndx].sh_addr;
+	struct mod_plt_sec *pltsec =
+		!in_init(mod, loc) ? &mod->arch.core : &mod->arch.init;
+	struct plt_entry *plt =
+		(struct plt_entry *)sechdrs[pltsec->plt_shndx].sh_addr;
 	int i = pltsec->plt_num_entries;
 	int j = i - 1;
 	u64 val = sym->st_value + rela->r_addend;
@@ -104,9 +104,10 @@ u64 module_emit_plt_entry(struct module *mod, Elf64_Shdr *sechdrs,
 u64 module_emit_veneer_for_adrp(struct module *mod, Elf64_Shdr *sechdrs,
 				void *loc, u64 val)
 {
-	struct mod_plt_sec *pltsec = !in_init(mod, loc) ? &mod->arch.core :
-							  &mod->arch.init;
-	struct plt_entry *plt = (struct plt_entry *)sechdrs[pltsec->plt_shndx].sh_addr;
+	struct mod_plt_sec *pltsec =
+		!in_init(mod, loc) ? &mod->arch.core : &mod->arch.init;
+	struct plt_entry *plt =
+		(struct plt_entry *)sechdrs[pltsec->plt_shndx].sh_addr;
 	int i = pltsec->plt_num_entries++;
 	u32 br;
 	int rd;
@@ -131,7 +132,7 @@ u64 module_emit_veneer_for_adrp(struct module *mod, Elf64_Shdr *sechdrs,
 }
 #endif
 
-#define cmp_3way(a,b)	((a) < (b) ? -1 : (a) > (b))
+#define cmp_3way(a, b) ((a) < (b) ? -1 : (a) > (b))
 
 static int cmp_rela(const void *a, const void *b)
 {
@@ -236,8 +237,8 @@ static unsigned int count_plts(Elf64_Sym *syms, Elf64_Rela *rela, int num,
 			if (min_align > SZ_4K)
 				ret++;
 			else
-				dstsec->sh_addralign = max(dstsec->sh_addralign,
-							   min_align);
+				dstsec->sh_addralign =
+					max(dstsec->sh_addralign, min_align);
 			break;
 		}
 	}
@@ -256,7 +257,6 @@ static unsigned int count_plts(Elf64_Sym *syms, Elf64_Rela *rela, int num,
 static bool branch_rela_needs_plt(Elf64_Sym *syms, Elf64_Rela *rela,
 				  Elf64_Word dstidx)
 {
-
 	Elf64_Sym *s = syms + ELF64_R_SYM(rela->r_info);
 
 	if (s->st_shndx == dstidx)
@@ -310,6 +310,19 @@ int module_frob_arch_sections(Elf_Ehdr *ehdr, Elf_Shdr *sechdrs,
 			tramp = sechdrs + i;
 		else if (sechdrs[i].sh_type == SHT_SYMTAB)
 			syms = (Elf64_Sym *)sechdrs[i].sh_addr;
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+		if (!mod->hakc_protected &&
+		    strstr(secstrings + sechdrs[i].sh_name, ".hakc.")) {
+			mod->hakc_protected = true;
+		}
+		if (mod->hakc_protected) {
+			if (strstr(secstrings + sechdrs[i].sh_name,
+				   ".data..ro_after_init..data.hakc.")) {
+				sechdrs[i].sh_flags |= SHF_RO_AFTER_INIT;
+			}
+		}
+#endif
 	}
 
 	if (!mod->arch.core.plt_shndx || !mod->arch.init.plt_shndx) {
@@ -354,7 +367,7 @@ int module_frob_arch_sections(Elf_Ehdr *ehdr, Elf_Shdr *sechdrs,
 	pltsec->sh_type = SHT_NOBITS;
 	pltsec->sh_flags = SHF_EXECINSTR | SHF_ALLOC;
 	pltsec->sh_addralign = L1_CACHE_BYTES;
-	pltsec->sh_size = (core_plts  + 1) * sizeof(struct plt_entry);
+	pltsec->sh_size = (core_plts + 1) * sizeof(struct plt_entry);
 	mod->arch.core.plt_num_entries = 0;
 	mod->arch.core.plt_max_entries = core_plts;
 

@@ -90,6 +90,13 @@
 #include <linux/seq_file.h>
 #include <linux/export.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+         HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 #define	INFINITY_LIFE_TIME	0xFFFFFFFF
 
 #define IPV6_MAX_STRLEN \
@@ -332,6 +339,10 @@ static int snmp6_alloc_dev(struct inet6_dev *idev)
 	int i;
 
 	idev->stats.ipv6 = alloc_percpu(struct ipstats_mib);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    	idev->stats.ipv6 = hakc_transfer_percpu_to_clique(idev->stats.ipv6,
+							  sizeof(struct ipstats_mib), __claque_id, __color);
+#endif
 	if (!idev->stats.ipv6)
 		goto err_ip;
 
@@ -346,10 +357,21 @@ static int snmp6_alloc_dev(struct inet6_dev *idev)
 					GFP_KERNEL);
 	if (!idev->stats.icmpv6dev)
 		goto err_icmp;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    	idev->stats.icmpv6dev = hakc_transfer_to_clique(idev->stats.icmpv6dev,
+							sizeof(*idev->stats.icmpv6dev),
+							__claque_id, __color,
+                                 false);
+#endif
 	idev->stats.icmpv6msgdev = kzalloc(sizeof(struct icmpv6msg_mib_device),
 					   GFP_KERNEL);
 	if (!idev->stats.icmpv6msgdev)
 		goto err_icmpmsg;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    	idev->stats.icmpv6msgdev = hakc_transfer_to_clique(idev->stats.icmpv6msgdev,
+							   sizeof(*idev->stats.icmpv6msgdev), __claque_id, __color,
+                                 false);
+#endif
 
 	return 0;
 
@@ -374,6 +396,10 @@ static struct inet6_dev *ipv6_add_dev(struct net_device *dev)
 	ndev = kzalloc(sizeof(struct inet6_dev), GFP_KERNEL);
 	if (!ndev)
 		return ERR_PTR(err);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    	ndev = hakc_transfer_to_clique(ndev, sizeof(*ndev), __claque_id, __color,
+                                  false);
+#endif
 
 	rwlock_init(&ndev->lock);
 	ndev->dev = dev;
@@ -390,6 +416,10 @@ static struct inet6_dev *ipv6_add_dev(struct net_device *dev)
 		kfree(ndev);
 		return ERR_PTR(err);
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	ndev->nd_parms = hakc_transfer_to_clique(ndev->nd_parms, sizeof
+	(*ndev->nd_parms), __claque_id, __color, false);
+#endif
 	if (ndev->cnf.forwarding)
 		dev_disable_lro(dev);
 	/* We refer to the device */
@@ -458,7 +488,6 @@ static struct inet6_dev *ipv6_add_dev(struct net_device *dev)
 	/* Join all-router multicast group if forwarding is set */
 	if (ndev->cnf.forwarding && (dev->flags & IFF_MULTICAST))
 		ipv6_dev_mc_inc(dev, &in6addr_linklocal_allrouters);
-
 	return ndev;
 
 err_release:
@@ -480,6 +509,9 @@ static struct inet6_dev *ipv6_find_idev(struct net_device *dev)
 		if (IS_ERR(idev))
 			return idev;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	idev->dev = hakc_sign_pointer_with_color(idev->dev, __claque_id, false);
+#endif
 
 	if (dev->flags&IFF_UP)
 		ipv6_mc_up(idev);
@@ -523,11 +555,23 @@ static int inet6_netconf_fill_devconf(struct sk_buff *skb, int ifindex,
 			flags);
 	if (!nlh)
 		return -EMSGSIZE;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    /* TODO: Figure out how sk_buffs work to properly transfer this when
+	 * creating */
+    nlh = hakc_transfer_to_clique(nlh, NLMSG_HDRLEN, __claque_id, __color,
+                                  false);
+#endif
 
 	if (type == NETCONFA_ALL)
 		all = true;
 
 	ncm = nlmsg_data(nlh);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	/* TODO: Figure out how sk_buffs work to properly transfer this when
+	 * creating */
+    ncm = hakc_transfer_to_clique(ncm, sizeof(*ncm), __claque_id, __color,
+                                  false);
+#endif
 	ncm->ncm_family = AF_INET6;
 
 	if (nla_put_s32(skb, NETCONFA_IFINDEX, ifindex) < 0)
@@ -572,6 +616,14 @@ void inet6_netconf_notify_devconf(struct net *net, int event, int type,
 	skb = nlmsg_new(inet6_netconf_msgsize_devconf(type), GFP_KERNEL);
 	if (!skb)
 		goto errout;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+                                  false);
+    skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+						       skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);
+#endif
 
 	err = inet6_netconf_fill_devconf(skb, ifindex, devconf, 0, 0,
 					 event, 0, type);
@@ -677,6 +729,14 @@ static int inet6_netconf_get_devconf(struct sk_buff *in_skb,
 	skb = nlmsg_new(inet6_netconf_msgsize_devconf(NETCONFA_ALL), GFP_KERNEL);
 	if (!skb)
 		goto errout;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+                                  false);
+	skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+						       skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);
+#endif
 
 	err = inet6_netconf_fill_devconf(skb, ifindex, devconf,
 					 NETLINK_CB(in_skb).portid,
@@ -1083,6 +1143,10 @@ ipv6_add_addr(struct inet6_dev *idev, struct ifa6_config *cfg,
 		err = -ENOBUFS;
 		goto out;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    ifa = hakc_transfer_to_clique(ifa, sizeof(*ifa), __claque_id, __color,
+                                 false);
+#endif
 
 	f6i = addrconf_f6i_alloc(net, idev, cfg->pfx, false, gfp_flags);
 	if (IS_ERR(f6i)) {
@@ -2904,6 +2968,9 @@ static int inet6_addr_add(struct net *net, int ifindex,
 		return -EINVAL;
 
 	dev = __dev_get_by_index(net, ifindex);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	dev = hakc_sign_pointer_with_color(dev, __claque_id, false);
+#endif
 	if (!dev)
 		return -ENODEV;
 
@@ -3534,8 +3601,9 @@ static int addrconf_notify(struct notifier_block *this, unsigned long event,
 				break;
 			}
 
-			if (!idev && dev->mtu >= IPV6_MIN_MTU)
+			if (!idev && dev->mtu >= IPV6_MIN_MTU) {
 				idev = ipv6_add_dev(dev);
+			}
 
 			if (!IS_ERR_OR_NULL(idev)) {
 				idev->if_flags |= IF_READY;
@@ -3662,11 +3730,65 @@ static int addrconf_notify(struct notifier_block *this, unsigned long event,
 	return NOTIFY_OK;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(addrconf_notify, static int,
+				  struct notifier_block *this,
+				  unsigned long event,
+				  void *ptr)
+{
+	int result;
+	void* prot_v;
+	int* orig_pcpu_refcnt;
+	clique_color_t dev_color;
+	claque_id_t dev_claque;
+	struct netdev_queue *orig_tx;
+
+	struct netdev_notifier_info *info = (struct netdev_notifier_info*)ptr;
+
+	dev_color = get_hakc_address_color(info->dev);
+	dev_claque = get_hakc_address_claque(info->dev);
+	this = hakc_transfer_to_clique(this, sizeof(*this), __claque_id,
+					 __color, false);
+	orig_pcpu_refcnt = HAKC_GET_SAFE_PTR(info->dev)->pcpu_refcnt;
+	HAKC_GET_SAFE_PTR(info->dev)->pcpu_refcnt = hakc_transfer_percpu_to_clique(
+		HAKC_GET_SAFE_PTR(info->dev)->pcpu_refcnt, sizeof(int),
+		__claque_id, __color);
+	orig_tx = HAKC_GET_SAFE_PTR(info->dev)->_tx;
+	HAKC_GET_SAFE_PTR(info->dev)->_tx = hakc_transfer_to_clique(HAKC_GET_SAFE_PTR(info->dev)->_tx,
+								    HAKC_GET_SAFE_PTR(info->dev)->num_tx_queues *
+							 sizeof(struct
+								netdev_queue),
+						 __claque_id, __color, false);
+	HAKC_GET_SAFE_PTR(info->dev)->dev_addr = hakc_transfer_to_clique
+						 (HAKC_GET_SAFE_PTR
+						  (info->dev)->dev_addr,
+		 sizeof(u64), __claque_id, __color, false);
+	info->dev = hakc_transfer_to_clique(info->dev, sizeof(struct
+							     net_device),
+					   __claque_id, __color, false);
+	prot_v = hakc_transfer_to_clique(info, sizeof(struct netdev_notifier_info),
+					__claque_id, __color, false);
+
+	result = addrconf_notify(this, event, prot_v);
+
+	info->dev = hakc_transfer_to_clique(info->dev,
+					   sizeof(struct net_device),
+					   dev_claque, dev_color, false);
+	HAKC_GET_SAFE_PTR(info->dev)->_tx = orig_tx;
+	HAKC_GET_SAFE_PTR(info->dev)->pcpu_refcnt = orig_pcpu_refcnt;
+	return result;
+}
+#endif
+
 /*
  *	addrconf module should be notified of a device going up
  */
 static struct notifier_block ipv6_dev_notf = {
-	.notifier_call = addrconf_notify,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.notifier_call = HAKC_OUTSIDE_TRANSFER_FUNC(addrconf_notify),
+#else
+  .notifier_call = addrconf_notify,
+#endif
 	.priority = ADDRCONF_NOTIFY_PRIORITY,
 };
 
@@ -4338,7 +4460,7 @@ static const struct seq_operations if6_seq_ops = {
 	.stop	= if6_seq_stop,
 };
 
-static int __net_init if6_proc_net_init(struct net *net)
+static int __net_init noinline if6_proc_net_init(struct net *net)
 {
 	if (!proc_create_net("if_inet6", 0444, net->proc_net, &if6_seq_ops,
 			sizeof(struct if6_iter_state)))
@@ -4346,13 +4468,34 @@ static int __net_init if6_proc_net_init(struct net *net)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(if6_proc_net_init, int, struct net* net) {
+	int result;
+
+	struct proc_dir_entry *orig_proc_net = net->proc_net;
+	/* NB: The sizes were determined at run time */
+	net->proc_net = hakc_transfer_to_clique(net->proc_net, 172,
+						__claque_id, __color, false);
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = if6_proc_net_init(net);
+	HAKC_GET_SAFE_PTR(net)->proc_net = orig_proc_net;
+
+	return result;
+}
+#endif
+
 static void __net_exit if6_proc_net_exit(struct net *net)
 {
 	remove_proc_entry("if_inet6", net->proc_net);
 }
 
 static struct pernet_operations if6_proc_net_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(if6_proc_net_init),
+#else
 	.init = if6_proc_net_init,
+#endif
 	.exit = if6_proc_net_exit,
 };
 
@@ -4788,7 +4931,7 @@ static int inet6_addr_modify(struct inet6_ifaddr *ifp, struct ifa6_config *cfg)
 	return 0;
 }
 
-static int
+static int noinline
 inet6_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 		  struct netlink_ext_ack *extack)
 {
@@ -4826,11 +4969,18 @@ inet6_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 		struct ifa_cacheinfo *ci;
 
 		ci = nla_data(tb[IFA_CACHEINFO]);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+        	ci = hakc_transfer_to_clique(ci, sizeof(*ci), __claque_id,
+					     __color,false);
+#endif
 		cfg.valid_lft = ci->ifa_valid;
 		cfg.preferred_lft = ci->ifa_prefered;
 	}
 
 	dev =  __dev_get_by_index(net, ifm->ifa_index);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	dev = hakc_sign_pointer_with_color(dev, __claque_id, false);
+#endif
 	if (!dev)
 		return -ENODEV;
 
@@ -4876,6 +5026,89 @@ inet6_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 
 	return err;
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(inet6_rtm_newaddr, static int,
+				  struct sk_buff *skb, struct nlmsghdr *nlh,
+				  struct netlink_ext_ack *extack)
+{
+	int result;
+	struct sk_buff *orig_skb = HAKC_GET_SAFE_PTR(skb);
+	typeof(skb->head) orig_head = orig_skb->head;
+	typeof(skb->data) orig_data = orig_skb->data;
+	typeof(skb->sk) orig_sk = orig_skb->sk;
+	struct net *orig_net = HAKC_OUTSIDE_TRANSFER_FUNC(sock_net)(orig_skb->sk);
+	size_t head_offset = orig_skb->data - orig_skb->head;
+	struct net_device *dev;
+//	typeof(dev->pcpu_refcnt) orig_refcnt;
+	struct hlist_head *head;
+
+	// TODO: Make this more generic
+	dev = hlist_entry_safe(
+		hakc_safe_ptr(orig_net->dev_index_head[1].first),
+		struct net_device, index_hlist);
+//	orig_refcnt = dev->pcpu_refcnt;
+
+//			pr_info("dev = %lx orig_refcnt = %lx\n", dev,
+//				dev->pcpu_refcnt);
+//			dev->pcpu_refcnt = hakc_transfer_data_to_target
+//				(link->doit, hakc_transfer_data_to_target,
+//				 sizeof(int), false);
+	HAKC_GET_SAFE_PTR(dev->ip6_ptr)->dev = hakc_transfer_to_clique(
+		HAKC_GET_SAFE_PTR(dev->ip6_ptr)->dev,
+		sizeof(*dev->ip6_ptr->dev),
+		__claque_id, __color, false);
+
+	dev->ip6_ptr = hakc_transfer_to_clique(
+		dev->ip6_ptr, sizeof(struct inet6_dev),
+		__claque_id, __color,false);
+//	orig_net->dev_index_head[1].first = &dev->index_hlist;
+	head = orig_net->dev_index_head;
+	orig_net->dev_index_head = hakc_transfer_to_clique(
+		head, sizeof(*head), __claque_id, __color, false
+	);
+
+	dev = hakc_transfer_to_clique(dev, sizeof(*dev), __claque_id, __color,
+				      false);
+	HAKC_OUTSIDE_TRANSFER_FUNC(sock_net_set)(skb->sk,
+		     hakc_transfer_to_clique(
+			     orig_net,
+			     sizeof(*orig_net), __claque_id, __color, false));
+	orig_skb->sk = hakc_transfer_to_clique(
+		orig_skb->sk, sizeof(*skb->sk), __claque_id, __color, false);
+	orig_skb->head = hakc_transfer_to_clique(
+		orig_skb->head, orig_skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)
+						       ), __claque_id, __color, false);
+	orig_skb->data = orig_skb->head + head_offset;
+	skb = hakc_transfer_to_clique(
+		skb,
+		SKB_DATA_ALIGN(sizeof(struct sk_buff)) +
+		SKB_DATA_ALIGN(
+			sizeof(struct skb_shared_info)),
+		__claque_id, __color,
+		false);
+	nlh = hakc_transfer_to_clique(nlh,nlh->nlmsg_len,
+				     __claque_id, __color, false);
+	extack = hakc_transfer_to_clique(
+		extack, sizeof(*extack), __claque_id, __color, false);
+
+	result = inet6_rtm_newaddr(skb, nlh, extack);
+
+	if(orig_skb->head)
+		orig_skb->head = orig_head;
+	if(orig_skb->data)
+		orig_skb->data = orig_data;
+	if(orig_skb->sk) {
+		orig_skb->sk = orig_sk;
+		HAKC_OUTSIDE_TRANSFER_FUNC(sock_net_set)
+		(orig_skb->sk, orig_net);
+	}
+	if(orig_net->dev_index_head)
+		orig_net->dev_index_head = head;
+
+	return result;
+}
+#endif
 
 static void put_ifaddrmsg(struct nlmsghdr *nlh, u8 prefixlen, u32 flags,
 			  u8 scope, int ifindex)
@@ -5083,6 +5316,8 @@ static int in6_dump_addrs(struct inet6_dev *idev, struct sk_buff *skb,
 	struct ifacaddr6 *ifaca;
 	int ip_idx = 0;
 	int err = 1;
+//	pr_info("in6_dump_addrs idev = %lx skb = %lx cb = %lx fillargs = "
+//		"%lx\n", idev, skb, cb, fillargs);
 
 	read_lock_bh(&idev->lock);
 	switch (fillargs->type) {
@@ -5279,6 +5514,84 @@ static int inet6_dump_ifaddr(struct sk_buff *skb, struct netlink_callback *cb)
 	return inet6_dump_addr(skb, cb, type);
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(inet6_dump_ifaddr, static int,
+				  struct sk_buff *skb,
+				  struct netlink_callback *cb) {
+//	struct sk_buff *orig_skb = skb;
+	typeof(skb->head) orig_head = skb->head;
+	typeof(skb->data) orig_data = skb->data;
+	struct nlmsghdr* orig_nlh = (struct nlmsghdr*)cb->nlh;
+	size_t head_offset = skb->data - skb->head;
+	typeof(skb->sk) orig_sk = skb->sk;
+	struct net *orig_net = HAKC_OUTSIDE_TRANSFER_FUNC(sock_net)(skb->sk);
+	struct hlist_head *head;
+
+	int result, s_h;
+
+	int h;
+	struct net_device *dev;
+
+	skb->head = hakc_transfer_to_clique(
+		skb->head,
+		skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+		__claque_id, __color, false);
+	skb->data = skb->head + head_offset;
+	HAKC_OUTSIDE_TRANSFER_FUNC(sock_net_set)(skb->sk,
+						 hakc_transfer_to_clique(
+							 orig_net,
+							 sizeof(*orig_net), __claque_id, __color, false));
+	skb->sk = hakc_transfer_to_clique(
+		skb->sk, sizeof(*skb->sk), __claque_id, __color, false);
+
+	skb = hakc_transfer_to_clique(
+		skb,
+		SKB_DATA_ALIGN(sizeof(struct sk_buff)) +
+		SKB_DATA_ALIGN(
+			sizeof(struct skb_shared_info)),
+		__claque_id, __color,
+		false);
+	cb->nlh = hakc_transfer_to_clique((struct nlmsghdr*)cb->nlh, cb->nlh->nlmsg_len,
+				      __claque_id, __color, false);
+	cb->skb = hakc_transfer_to_clique(cb->skb, sizeof(*cb->skb),
+					  __claque_id, __color, false);
+	s_h = cb->args[0];
+	for (h = s_h; h < NETDEV_HASHENTRIES; h++) {
+		head = &orig_net->dev_index_head[h];
+		if(head->first) {
+			head->first = hakc_transfer_to_clique(head->first,
+							      sizeof(*dev),
+							      __claque_id,
+							      __color, false);
+		}
+	}
+	head = orig_net->dev_index_head;
+	orig_net->dev_index_head = hakc_transfer_to_clique(
+		head, sizeof(*head), __claque_id, __color, false
+		);
+
+	cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color,
+				     false);
+
+	result = inet6_dump_ifaddr(skb, cb);
+
+	if(HAKC_GET_SAFE_PTR(skb)->head)
+		HAKC_GET_SAFE_PTR(skb)->head = orig_head;
+	if(HAKC_GET_SAFE_PTR(skb)->data)
+		HAKC_GET_SAFE_PTR(skb)->data = orig_data;
+	if(HAKC_GET_SAFE_PTR(skb)->sk) {
+		HAKC_GET_SAFE_PTR(skb)->sk = orig_sk;
+		HAKC_OUTSIDE_TRANSFER_FUNC(sock_net_set)
+		(HAKC_GET_SAFE_PTR(skb)->sk, orig_net);
+	}
+	HAKC_GET_SAFE_PTR(cb)->nlh = orig_nlh;
+//	HAKC_GET_SAFE_PTR(cb)->skb = orig_skb;
+	orig_net->dev_index_head = head;
+
+	return result;
+}
+#endif
+
 static int inet6_dump_ifmcaddr(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	enum addr_type_t type = MULTICAST_ADDR;
@@ -5340,7 +5653,8 @@ static int inet6_rtm_valid_getaddr_req(struct sk_buff *skb,
 	return 0;
 }
 
-static int inet6_rtm_getaddr(struct sk_buff *in_skb, struct nlmsghdr *nlh,
+static int noinline inet6_rtm_getaddr(struct sk_buff *in_skb, struct nlmsghdr
+								    *nlh,
 			     struct netlink_ext_ack *extack)
 {
 	struct net *net = sock_net(in_skb->sk);
@@ -5392,6 +5706,14 @@ static int inet6_rtm_getaddr(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 		err = -ENOBUFS;
 		goto errout_ifa;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+                                  false);
+    skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+						       skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);
+#endif
 
 	err = inet6_fill_ifaddr(skb, ifa, &fillargs);
 	if (err < 0) {
@@ -5412,6 +5734,78 @@ errout:
 	return err;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(inet6_rtm_getaddr, static int,
+				  struct sk_buff *skb, struct nlmsghdr *nlh,
+				  struct netlink_ext_ack *extack) {
+	int result;
+	typeof(skb->head) orig_head = skb->head;
+	typeof(skb->data) orig_data = skb->data;
+	typeof(skb->sk) orig_sk = skb->sk;
+	struct net *orig_net = HAKC_OUTSIDE_TRANSFER_FUNC(sock_net)(skb->sk);
+	size_t head_offset = skb->data - skb->head;
+	struct net_device *dev;
+//	typeof(dev->pcpu_refcnt) orig_refcnt;
+
+	// TODO: Make this more generic
+	dev = hlist_entry_safe(
+		orig_net->dev_index_head[1].first,
+		struct net_device, index_hlist);
+//	orig_refcnt = dev->pcpu_refcnt;
+
+//			pr_info("dev = %lx orig_refcnt = %lx\n", dev,
+//				dev->pcpu_refcnt);
+//			dev->pcpu_refcnt = hakc_transfer_data_to_target
+//				(link->doit, hakc_transfer_data_to_target,
+//				 sizeof(int), false);
+	dev = hakc_transfer_to_clique(dev, sizeof(*dev), __claque_id, __color,
+				      false);
+	dev->ip6_ptr->dev = hakc_transfer_to_clique(
+		dev->ip6_ptr->dev, sizeof(*dev->ip6_ptr->dev),
+		__claque_id, __color, false);
+
+	dev->ip6_ptr = hakc_transfer_to_clique(
+		dev->ip6_ptr, sizeof(struct inet6_dev),
+		__claque_id, __color,false);
+	orig_net->dev_index_head[1].first = &dev->index_hlist;
+
+	HAKC_OUTSIDE_TRANSFER_FUNC(sock_net_set)(skb->sk,
+						 hakc_transfer_to_clique(
+							 orig_net,
+							 sizeof(*orig_net), __claque_id, __color, false));
+	skb->sk = hakc_transfer_to_clique(
+		skb->sk, sizeof(*skb->sk), __claque_id, __color, false);
+	skb->head = hakc_transfer_to_clique(
+		skb->head, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)
+		), __claque_id, __color, false);
+	skb->data = skb->head + head_offset;
+	skb = hakc_transfer_to_clique(
+		skb,
+		SKB_DATA_ALIGN(sizeof(struct sk_buff)) +
+		SKB_DATA_ALIGN(
+			sizeof(struct skb_shared_info)),
+		__claque_id, __color,
+		false);
+	nlh = hakc_transfer_to_clique(nlh,nlh->nlmsg_len,
+				      __claque_id, __color, false);
+	extack = hakc_transfer_to_clique(
+		extack, sizeof(*extack), __claque_id, __color, false);
+
+	result = inet6_rtm_getaddr(skb, nlh, extack);
+
+	if(HAKC_GET_SAFE_PTR(skb)->head)
+		HAKC_GET_SAFE_PTR(skb)->head = orig_head;
+	if(HAKC_GET_SAFE_PTR(skb)->data)
+		HAKC_GET_SAFE_PTR(skb)->data = orig_data;
+	if(HAKC_GET_SAFE_PTR(skb)->sk) {
+		HAKC_GET_SAFE_PTR(skb)->sk = orig_sk;
+		HAKC_OUTSIDE_TRANSFER_FUNC(sock_net_set)
+		(HAKC_GET_SAFE_PTR(skb)->sk, orig_net);
+	}
+	return result;
+}
+#endif
+
 static void inet6_ifa_notify(int event, struct inet6_ifaddr *ifa)
 {
 	struct sk_buff *skb;
@@ -5428,6 +5822,14 @@ static void inet6_ifa_notify(int event, struct inet6_ifaddr *ifa)
 	skb = nlmsg_new(inet6_ifaddr_msgsize(), GFP_ATOMIC);
 	if (!skb)
 		goto errout;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+/*    skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+                                  false);
+	skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+						       skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);*/
+#endif
 
 	err = inet6_fill_ifaddr(skb, ifa, &fillargs);
 	if (err < 0) {
@@ -5642,7 +6044,7 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static size_t inet6_get_link_af_size(const struct net_device *dev,
+static noinline size_t inet6_get_link_af_size(const struct net_device *dev,
 				     u32 ext_filter_mask)
 {
 	if (!__in6_dev_get(dev))
@@ -5651,7 +6053,20 @@ static size_t inet6_get_link_af_size(const struct net_device *dev,
 	return inet6_ifla6_size();
 }
 
-static int inet6_fill_link_af(struct sk_buff *skb, const struct net_device *dev,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(inet6_get_link_af_size, static size_t,
+				  const struct net_device *dev,
+				  u32 ext_filter_mask) {
+	return inet6_get_link_af_size(hakc_transfer_to_clique((void*)dev,
+							      sizeof(*dev),
+							      __claque_id,
+							      __color, false)
+					      , ext_filter_mask);
+}
+#endif
+
+static noinline int inet6_fill_link_af(struct sk_buff *skb, const struct
+				    net_device *dev,
 			      u32 ext_filter_mask)
 {
 	struct inet6_dev *idev = __in6_dev_get(dev);
@@ -5664,6 +6079,72 @@ static int inet6_fill_link_af(struct sk_buff *skb, const struct net_device *dev,
 
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(inet6_fill_link_af, static int,
+				  struct sk_buff *skb,
+				  const struct net_device *dev,
+				  u32 ext_filter_mask)
+{
+	int result;
+
+	struct net_device *prot_dev = HAKC_GET_SAFE_PTR((struct net_device*)
+								dev);
+	struct sk_buff *orig_skb = HAKC_GET_SAFE_PTR(skb);
+	typeof(skb->head) orig_head = orig_skb->head;
+	typeof(skb->data) orig_data = orig_skb->data;
+	typeof(skb->sk) orig_sk = orig_skb->sk;
+	struct net *orig_net = NULL;
+	size_t head_offset = orig_skb->data - orig_skb->head;
+
+	if(orig_skb->sk) {
+		orig_net = HAKC_OUTSIDE_TRANSFER_FUNC(sock_net)(orig_skb->sk);
+		HAKC_OUTSIDE_TRANSFER_FUNC(sock_net_set)
+		(orig_skb->sk, hakc_transfer_to_clique(orig_net, sizeof(*orig_net),
+						  __claque_id, __color, false));
+	}
+
+	orig_skb->head = hakc_transfer_to_clique(
+		orig_skb->head,
+		orig_skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+		__claque_id, __color, false);
+	orig_skb->data = orig_skb->head + head_offset;
+	skb = hakc_transfer_to_clique(
+		skb,
+		SKB_DATA_ALIGN(sizeof(struct sk_buff)) +
+		SKB_DATA_ALIGN(
+			sizeof(struct skb_shared_info)),
+		__claque_id, __color,
+		false);
+	if(prot_dev->ip6_ptr) {
+		HAKC_GET_SAFE_PTR(prot_dev->ip6_ptr)->dev =
+			hakc_transfer_to_clique(HAKC_GET_SAFE_PTR(prot_dev->ip6_ptr)->dev,
+					       sizeof(*prot_dev->ip6_ptr->dev),
+					       __claque_id, __color, false);
+
+		prot_dev->ip6_ptr =
+			hakc_transfer_to_clique(prot_dev->ip6_ptr,
+					       sizeof(struct inet6_dev),
+					       __claque_id, __color, false);
+	}
+
+	prot_dev = hakc_transfer_to_clique(prot_dev, sizeof(*dev), __claque_id, __color,
+				     false);
+
+	result = inet6_fill_link_af(skb, prot_dev, ext_filter_mask);
+	if(orig_skb->head)
+		orig_skb->head = orig_head;
+	if(orig_skb->data)
+		orig_skb->data = orig_data;
+	if(orig_skb->sk) {
+		orig_skb->sk = orig_sk;
+		if (orig_net)
+			HAKC_OUTSIDE_TRANSFER_FUNC(sock_net_set)
+			(orig_skb->sk, orig_net);
+	}
+	return result;
+}
+#endif
 
 static int inet6_set_iftoken(struct inet6_dev *idev, struct in6_addr *token)
 {
@@ -5944,6 +6425,14 @@ void inet6_ifinfo_notify(int event, struct inet6_dev *idev)
 	skb = nlmsg_new(inet6_if_nlmsg_size(), GFP_ATOMIC);
 	if (!skb)
 		goto errout;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+                                  false);
+	skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+						       skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);
+#endif
 
 	err = inet6_fill_ifinfo(skb, idev, 0, 0, event, 0);
 	if (err < 0) {
@@ -6016,6 +6505,14 @@ static void inet6_prefix_notify(int event, struct inet6_dev *idev,
 	skb = nlmsg_new(inet6_prefix_nlmsg_size(), GFP_ATOMIC);
 	if (!skb)
 		goto errout;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+                                  false);
+	skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+						       skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);
+#endif
 
 	err = inet6_fill_prefix(skb, idev, pinfo, 0, 0, event, 0);
 	if (err < 0) {
@@ -6912,6 +7409,10 @@ static int __addrconf_sysctl_register(struct net *net, char *dev_name,
 	table = kmemdup(addrconf_sysctl, sizeof(addrconf_sysctl), GFP_KERNEL);
 	if (!table)
 		goto out;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    table = hakc_transfer_to_clique(table, sizeof(addrconf_sysctl), __claque_id, __color,
+                                 false);
+#endif
 
 	for (i = 0; table[i].data; i++) {
 		table[i].data += (char *)p - (char *)&ipv6_devconf;
@@ -6966,12 +7467,25 @@ static void __addrconf_sysctl_unregister(struct net *net,
 static int addrconf_sysctl_register(struct inet6_dev *idev)
 {
 	int err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	struct net *net;
+#endif
 
 	if (!sysctl_dev_name_is_allowed(idev->dev->name))
 		return -EINVAL;
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    net = neigh_parms_net(idev->nd_parms);
+    write_pnet(&idev->nd_parms->net, hakc_transfer_data_to_target
+    (neigh_sysctl_register, net, sizeof(*net), true));
+#endif
 	err = neigh_sysctl_register(idev->dev, idev->nd_parms,
 				    &ndisc_ifinfo_sysctl_change);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	write_pnet(&idev->nd_parms->net, hakc_transfer_data_to_target(net, net,
+                                                              sizeof(*net),
+                                                              false));
+#endif
 	if (err)
 		return err;
 	err = __addrconf_sysctl_register(dev_net(idev->dev), idev->dev->name,
@@ -6992,7 +7506,7 @@ static void addrconf_sysctl_unregister(struct inet6_dev *idev)
 
 #endif
 
-static int __net_init addrconf_init_net(struct net *net)
+static int noinline __net_init addrconf_init_net(struct net *net)
 {
 	int err = -ENOMEM;
 	struct ipv6_devconf *all, *dflt;
@@ -7000,10 +7514,18 @@ static int __net_init addrconf_init_net(struct net *net)
 	all = kmemdup(&ipv6_devconf, sizeof(ipv6_devconf), GFP_KERNEL);
 	if (!all)
 		goto err_alloc_all;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    all = hakc_transfer_to_clique(all, sizeof(ipv6_devconf), __claque_id, __color,
+                                  false);
+#endif
 
 	dflt = kmemdup(&ipv6_devconf_dflt, sizeof(ipv6_devconf_dflt), GFP_KERNEL);
 	if (!dflt)
 		goto err_alloc_dflt;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    dflt = hakc_transfer_to_clique(dflt, sizeof(ipv6_devconf_dflt), __claque_id, __color,
+                                 false);
+#endif
 
 	if (IS_ENABLED(CONFIG_SYSCTL) &&
 	    !net_eq(net, &init_net)) {
@@ -7039,11 +7561,24 @@ static int __net_init addrconf_init_net(struct net *net)
 	net->ipv6.devconf_dflt = dflt;
 
 #ifdef CONFIG_SYSCTL
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	err = __addrconf_sysctl_register(net, hakc_sign_pointer_with_color("all",
+							       __claque_id,
+							       false),
+							       NULL, all);
+#else
 	err = __addrconf_sysctl_register(net, "all", NULL, all);
+#endif
 	if (err < 0)
 		goto err_reg_all;
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	err = __addrconf_sysctl_register(net, hakc_sign_pointer_with_color("default",
+							       __claque_id,
+							       false), NULL, dflt);
+#else
 	err = __addrconf_sysctl_register(net, "default", NULL, dflt);
+#endif
 	if (err < 0)
 		goto err_reg_dflt;
 #endif
@@ -7073,18 +7608,58 @@ static void __net_exit addrconf_exit_net(struct net *net)
 	kfree(net->ipv6.devconf_all);
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(addrconf_init_net, int, struct net* net) {
+	int result;
+
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = addrconf_init_net(net);
+
+	return result;
+}
+#endif
+
 static struct pernet_operations addrconf_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(addrconf_init_net),
+#else
 	.init = addrconf_init_net,
+#endif
 	.exit = addrconf_exit_net,
 };
 
 static struct rtnl_af_ops inet6_ops __read_mostly = {
 	.family		  = AF_INET6,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.fill_link_af	  = HAKC_OUTSIDE_TRANSFER_FUNC(inet6_fill_link_af),
+#else
 	.fill_link_af	  = inet6_fill_link_af,
-	.get_link_af_size = inet6_get_link_af_size,
+#endif
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.get_link_af_size	  = HAKC_OUTSIDE_TRANSFER_FUNC(inet6_get_link_af_size),
+#else
+	.get_link_af_size	  = inet6_get_link_af_size,
+#endif
 	.validate_link_af = inet6_validate_link_af,
 	.set_link_af	  = inet6_set_link_af,
 };
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(addrconf_init, void, void) {
+	dev_net_set(init_net.loopback_dev, hakc_transfer_to_clique(&init_net,
+								   sizeof(init_net),
+								   __claque_id, __color,
+								   false));
+	init_net.loopback_dev->pcpu_refcnt = hakc_transfer_percpu_to_clique(
+		init_net.loopback_dev->pcpu_refcnt, sizeof(int),
+		__claque_id, __color);
+	init_net.loopback_dev = hakc_sign_pointer_with_color(
+		init_net.loopback_dev, __claque_id, false);
+}
+
+
+#endif
 
 /*
  *	Init / cleanup code
@@ -7111,6 +7686,12 @@ int __init addrconf_init(void)
 		err = -ENOMEM;
 		goto out_nowq;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	/* NB: size determined dynamic testing */
+	addrconf_wq = hakc_transfer_to_clique(addrconf_wq, 320,
+					     __claque_id, __color, false);
+	HAKC_OUTSIDE_TRANSFER_FUNC(addrconf_init)();
+#endif
 
 	/* The addrconf netdev notifier requires that loopback_dev
 	 * has it's ipv6 private information allocated and setup
@@ -7154,17 +7735,32 @@ int __init addrconf_init(void)
 	if (err < 0)
 		goto errout;
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	err = rtnl_register_module(THIS_MODULE, PF_INET6, RTM_NEWADDR,
+				   HAKC_OUTSIDE_TRANSFER_FUNC
+				   (inet6_rtm_newaddr), NULL, 0);
+#else
 	err = rtnl_register_module(THIS_MODULE, PF_INET6, RTM_NEWADDR,
 				   inet6_rtm_newaddr, NULL, 0);
+#endif
 	if (err < 0)
 		goto errout;
 	err = rtnl_register_module(THIS_MODULE, PF_INET6, RTM_DELADDR,
 				   inet6_rtm_deladdr, NULL, 0);
 	if (err < 0)
 		goto errout;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	err = rtnl_register_module(THIS_MODULE, PF_INET6, RTM_GETADDR,
+				   HAKC_OUTSIDE_TRANSFER_FUNC
+				   (inet6_rtm_getaddr),
+				   HAKC_OUTSIDE_TRANSFER_FUNC
+				   (inet6_dump_ifaddr),
+				   RTNL_FLAG_DOIT_UNLOCKED);
+#else
 	err = rtnl_register_module(THIS_MODULE, PF_INET6, RTM_GETADDR,
 				   inet6_rtm_getaddr, inet6_dump_ifaddr,
 				   RTNL_FLAG_DOIT_UNLOCKED);
+#endif
 	if (err < 0)
 		goto errout;
 	err = rtnl_register_module(THIS_MODULE, PF_INET6, RTM_GETMULTICAST,

@@ -52,6 +52,13 @@
 
 #include <linux/uaccess.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+	 HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 /*
  *	Parsing tlv encoded headers.
  *
@@ -580,11 +587,17 @@ looped_back:
 	hdr->segments_left--;
 	i = n - hdr->segments_left;
 
-	buf = kcalloc(struct_size(hdr, segments.addr, n + 2), 2, GFP_ATOMIC);
-	if (unlikely(!buf)) {
-		kfree_skb(skb);
-		return -1;
-	}
+    buf = kcalloc(struct_size(hdr, segments.addr, n + 2), 2, GFP_ATOMIC);
+    if (unlikely(!buf)) {
+        kfree_skb(skb);
+        return -1;
+    }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	buf = hakc_transfer_to_clique(buf,
+				     struct_size(hdr, segments.addr, n + 2)
+					* 2,
+					__claque_id, __color, false);
+#endif
 
 	ohdr = (struct ipv6_rpl_sr_hdr *)buf;
 	ipv6_rpl_srh_decompress(ohdr, hdr, &ipv6_hdr(skb)->daddr, n);

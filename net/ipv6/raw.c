@@ -59,6 +59,13 @@
 #include <linux/seq_file.h>
 #include <linux/export.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+         HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 #define	ICMPV6_HDRLEN	4	/* ICMPv6 header, RFC 4443 Section 2.1 */
 
 struct raw_hashinfo raw_v6_hashinfo = {
@@ -760,7 +767,7 @@ static int raw6_getfrag(void *from, char *to, int offset, int len, int odd,
 
 	offset -= rfv->hlen;
 
-	return ip_generic_getfrag(rfv->msg, to, offset, len, odd, skb);
+	return ip_generic_getfrag(hakc_safe_ptr(rfv->msg), to, offset, len, odd, skb);
 }
 
 static int rawv6_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
@@ -1275,7 +1282,7 @@ static const struct seq_operations raw6_seq_ops = {
 	.show =		raw6_seq_show,
 };
 
-static int __net_init raw6_init_net(struct net *net)
+static int __net_init noinline raw6_init_net(struct net *net)
 {
 	if (!proc_create_net_data("raw6", 0444, net->proc_net, &raw6_seq_ops,
 			sizeof(struct raw_iter_state), &raw_v6_hashinfo))
@@ -1284,13 +1291,34 @@ static int __net_init raw6_init_net(struct net *net)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(raw6_init_net, int, struct net* net) {
+	int result;
+
+	struct proc_dir_entry *orig_proc_net = net->proc_net;
+	/* NB: The sizes were determined at run time */
+	net->proc_net = hakc_transfer_to_clique(net->proc_net, 172,
+						__claque_id, __color, false);
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = raw6_init_net(net);
+	HAKC_GET_SAFE_PTR(net)->proc_net = orig_proc_net;
+
+	return result;
+}
+#endif
+
 static void __net_exit raw6_exit_net(struct net *net)
 {
 	remove_proc_entry("raw6", net->proc_net);
 }
 
 static struct pernet_operations raw6_net_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(raw6_init_net),
+#else
 	.init = raw6_init_net,
+#endif
 	.exit = raw6_exit_net,
 };
 
@@ -1309,7 +1337,11 @@ void raw6_proc_exit(void)
 const struct proto_ops inet6_sockraw_ops = {
 	.family		   = PF_INET6,
 	.owner		   = THIS_MODULE,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.release	   = HAKC_OUTSIDE_TRANSFER_FUNC(inet6_release),
+#else
 	.release	   = inet6_release,
+#endif
 	.bind		   = inet6_bind,
 	.connect	   = inet_dgram_connect,	/* ok		*/
 	.socketpair	   = sock_no_socketpair,	/* a do nothing	*/

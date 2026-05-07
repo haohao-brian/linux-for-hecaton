@@ -5,6 +5,7 @@
 
 #include <linux/module.h>
 #include <linux/elf.h>
+#include <linux/hakc.h>
 
 /* These may be implemented by architectures that need to hook into the
  * module loader code.  Architectures that don't need to do anything special
@@ -25,6 +26,13 @@ unsigned int arch_mod_section_prepend(struct module *mod, unsigned int section);
 /* Allocator used for allocating struct module, core sections and init
    sections.  Returns NULL on failure. */
 void *module_alloc(unsigned long size);
+
+void *module_alloc_bounds(unsigned long size, u64 base, u64 end);
+
+#ifdef CONFIG_PAC_MTE_COMPART
+void *hakc_module_alloc_bounds(clique_color_t color, unsigned long size,
+			      u64 base, u64 end);
+#endif
 
 /* Free memory returned from module_alloc. */
 void module_memfree(void *module_region);

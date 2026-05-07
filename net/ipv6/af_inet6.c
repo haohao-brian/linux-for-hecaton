@@ -68,6 +68,14 @@
 
 #include "ip6_offload.h"
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+#include <linux/hakc.h>
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+         HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 MODULE_AUTHOR("Cast of dozens");
 MODULE_DESCRIPTION("IPv6 protocol stack for Linux");
 MODULE_LICENSE("GPL");
@@ -75,7 +83,11 @@ MODULE_LICENSE("GPL");
 /* The inetsw6 table contains everything that inet6_create needs to
  * build a new socket.
  */
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+static struct list_head inetsw6[SOCK_MAX] _HAKC_RW_DATA_COLOR_ATTR(RED_CLIQUE);
+#else
 static struct list_head inetsw6[SOCK_MAX];
+#endif
 static DEFINE_SPINLOCK(inetsw6_lock);
 
 struct ipv6_params ipv6_defaults = {
@@ -107,17 +119,23 @@ static __inline__ struct ipv6_pinfo *inet6_sk_generic(struct sock *sk)
 	return (struct ipv6_pinfo *)(((u8 *)sk) + offset);
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_SYMBOL_CLAQUE(inet6_create, 2, GREEN_CLIQUE,
+		  HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(RED_CLIQUE));
+#endif
 static int inet6_create(struct net *net, struct socket *sock, int protocol,
-			int kern)
-{
-	struct inet_sock *inet;
-	struct ipv6_pinfo *np;
-	struct sock *sk;
-	struct inet_protosw *answer;
-	struct proto *answer_prot;
-	unsigned char answer_flags;
-	int try_loading_module = 0;
-	int err;
+                        int kern) {
+    struct inet_sock *inet;
+    struct ipv6_pinfo *np;
+    struct sock *sk;
+    struct inet_protosw *answer;
+    struct proto *answer_prot;
+    unsigned char answer_flags;
+    int try_loading_module = 0;
+    int err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    TRANSFER_STRUCT_TYPE(sock) sk_transfer;
+#endif
 
 	if (protocol < 0 || protocol >= IPPROTO_MAX)
 		return -EINVAL;
@@ -179,10 +197,18 @@ lookup_protocol:
 
 	WARN_ON(!answer_prot->slab);
 
-	err = -ENOBUFS;
-	sk = sk_alloc(net, PF_INET6, GFP_KERNEL, answer_prot, kern);
-	if (!sk)
-		goto out;
+
+    err = -ENOBUFS;
+    sk = sk_alloc(net, PF_INET6, GFP_KERNEL, answer_prot, kern);
+    if (!sk)
+        goto out;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    TRANSFER_FUNC_NAME(sock)(sk,
+            (const void*)EMBED_CLAQUE_ID(__claque_id_inet6_create, HAKC_HERE),
+            answer_prot->obj_size, &sk_transfer);
+    sk = HAKC_TRANSFERRED(sock, sk_transfer);
+    sk->sk_prot = answer_prot;
+#endif
 
 	sock_init_data(sock, sk);
 
@@ -459,7 +485,7 @@ int inet6_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 }
 EXPORT_SYMBOL(inet6_bind);
 
-int inet6_release(struct socket *sock)
+noinline int inet6_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
 
@@ -475,6 +501,19 @@ int inet6_release(struct socket *sock)
 	return inet_release(sock);
 }
 EXPORT_SYMBOL(inet6_release);
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(inet6_release, int, struct socket *sock) {
+	int ret;
+
+	sock = hakc_transfer_to_clique(sock, sizeof(*sock), __claque_id,
+				       __color, false);
+	ret = inet6_release(sock);
+
+	return ret;
+}
+EXPORT_SYMBOL(HAKC_OUTSIDE_TRANSFER_FUNC(inet6_release));
+#endif
 
 void inet6_destroy_sock(struct sock *sk)
 {
@@ -644,6 +683,7 @@ INDIRECT_CALLABLE_DECLARE(int udpv6_recvmsg(struct sock *, struct msghdr *,
 int inet6_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		  int flags)
 {
+
 	struct sock *sk = sock->sk;
 	int addr_len = 0;
 	int err;
@@ -663,7 +703,11 @@ const struct proto_ops inet6_stream_ops = {
 	.family		   = PF_INET6,
 	.flags		   = PROTO_CMSG_DATA_ONLY,
 	.owner		   = THIS_MODULE,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.release	   = HAKC_OUTSIDE_TRANSFER_FUNC(inet6_release),
+#else
 	.release	   = inet6_release,
+#endif
 	.bind		   = inet6_bind,
 	.connect	   = inet_stream_connect,	/* ok		*/
 	.socketpair	   = sock_no_socketpair,	/* a do nothing	*/
@@ -696,7 +740,11 @@ const struct proto_ops inet6_stream_ops = {
 const struct proto_ops inet6_dgram_ops = {
 	.family		   = PF_INET6,
 	.owner		   = THIS_MODULE,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.release	   = HAKC_OUTSIDE_TRANSFER_FUNC(inet6_release),
+#else
 	.release	   = inet6_release,
+#endif
 	.bind		   = inet6_bind,
 	.connect	   = inet_dgram_connect,	/* ok		*/
 	.socketpair	   = sock_no_socketpair,	/* a do nothing	*/
@@ -719,20 +767,40 @@ const struct proto_ops inet6_dgram_ops = {
 #endif
 };
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(inet6_create, int, struct net *net,
+				  struct socket *sock, int protocol, int kern) {
+	sock = hakc_transfer_to_clique(sock, sizeof(*sock), __claque_id,
+				       __color, false);
+	return inet6_create(net, sock, protocol, kern);
+}
+EXPORT_SYMBOL(HAKC_OUTSIDE_TRANSFER_FUNC(inet6_create));
+#endif
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+static struct net_proto_family __ro_after_init inet6_family_ops = {
+	.family = PF_INET6,
+	.create = HAKC_OUTSIDE_TRANSFER_FUNC(inet6_create),
+	.owner = THIS_MODULE,
+};
+#else
 static const struct net_proto_family inet6_family_ops = {
 	.family = PF_INET6,
 	.create = inet6_create,
-	.owner	= THIS_MODULE,
+	.owner = THIS_MODULE,
 };
+#endif
 
 int inet6_register_protosw(struct inet_protosw *p)
 {
 	struct list_head *lh;
 	struct inet_protosw *answer;
 	struct list_head *last_perm;
-	int protocol = p->protocol;
+	int protocol;
 	int ret;
 
+	protocol = p->protocol;
+	
 	spin_lock_bh(&inetsw6_lock);
 
 	ret = -EINVAL;
@@ -881,15 +949,28 @@ static int __net_init ipv6_init_mibs(struct net *net)
 {
 	int i;
 
-	net->mib.udp_stats_in6 = alloc_percpu(struct udp_mib);
-	if (!net->mib.udp_stats_in6)
-		return -ENOMEM;
-	net->mib.udplite_stats_in6 = alloc_percpu(struct udp_mib);
-	if (!net->mib.udplite_stats_in6)
-		goto err_udplite_mib;
-	net->mib.ipv6_statistics = alloc_percpu(struct ipstats_mib);
-	if (!net->mib.ipv6_statistics)
-		goto err_ip_mib;
+    net->mib.udp_stats_in6 = alloc_percpu(struct udp_mib);
+    if (!net->mib.udp_stats_in6)
+        return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    net->mib.udp_stats_in6 = hakc_transfer_percpu_to_clique(net->mib
+								  .udp_stats_in6,
+							  sizeof(struct udp_mib), __claque_id, __color);
+#endif
+    net->mib.udplite_stats_in6 = alloc_percpu(struct udp_mib);
+    if (!net->mib.udplite_stats_in6)
+        goto err_udplite_mib;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    net->mib.udplite_stats_in6 = hakc_transfer_percpu_to_clique(net->mib.udplite_stats_in6,
+							  sizeof(struct udp_mib), __claque_id, __color);
+#endif
+    net->mib.ipv6_statistics = alloc_percpu(struct ipstats_mib);
+    if (!net->mib.ipv6_statistics)
+        goto err_ip_mib;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    net->mib.ipv6_statistics = hakc_transfer_percpu_to_clique(net->mib.ipv6_statistics,
+							  sizeof(struct ipstats_mib), __claque_id, __color);
+#endif
 
 	for_each_possible_cpu(i) {
 		struct ipstats_mib *af_inet6_stats;
@@ -898,14 +979,23 @@ static int __net_init ipv6_init_mibs(struct net *net)
 	}
 
 
-	net->mib.icmpv6_statistics = alloc_percpu(struct icmpv6_mib);
-	if (!net->mib.icmpv6_statistics)
-		goto err_icmp_mib;
-	net->mib.icmpv6msg_statistics = kzalloc(sizeof(struct icmpv6msg_mib),
-						GFP_KERNEL);
-	if (!net->mib.icmpv6msg_statistics)
-		goto err_icmpmsg_mib;
-	return 0;
+    net->mib.icmpv6_statistics = alloc_percpu(struct icmpv6_mib);
+    if (!net->mib.icmpv6_statistics)
+        goto err_icmp_mib;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    net->mib.icmpv6_statistics = hakc_transfer_percpu_to_clique(net->mib.icmpv6_statistics,
+							  sizeof(struct icmpv6_mib), __claque_id, __color);
+#endif
+    net->mib.icmpv6msg_statistics = kzalloc(sizeof(struct icmpv6msg_mib),
+                                            GFP_KERNEL);
+    if (!net->mib.icmpv6msg_statistics)
+        goto err_icmpmsg_mib;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    net->mib.icmpv6msg_statistics = hakc_transfer_to_clique(net->mib
+            .icmpv6msg_statistics, sizeof(struct icmpv6msg_mib), __claque_id,
+                    __color, false);
+#endif
+    return 0;
 
 err_icmpmsg_mib:
 	free_percpu(net->mib.icmpv6_statistics);
@@ -927,7 +1017,7 @@ static void ipv6_cleanup_mibs(struct net *net)
 	kfree(net->mib.icmpv6msg_statistics);
 }
 
-static int __net_init inet6_net_init(struct net *net)
+static int __net_init noinline inet6_net_init(struct net *net)
 {
 	int err = 0;
 
@@ -983,6 +1073,24 @@ out:
 #endif
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(inet6_net_init, int,
+				  struct net* net) {
+	int result;
+
+	struct proc_dir_entry *orig_proc_net = net->proc_net;
+	/* NB: The sizes were determined at run time */
+	net->proc_net = hakc_transfer_to_clique(net->proc_net, 172,
+						__claque_id, __color, false);
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = inet6_net_init(net);
+	HAKC_GET_SAFE_PTR(net)->proc_net = orig_proc_net;
+
+	return result;
+}
+#endif
+
 static void __net_exit inet6_net_exit(struct net *net)
 {
 #ifdef CONFIG_PROC_FS
@@ -994,7 +1102,11 @@ static void __net_exit inet6_net_exit(struct net *net)
 }
 
 static struct pernet_operations inet6_net_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(inet6_net_init),
+#else
 	.init = inet6_net_init,
+#endif
 	.exit = inet6_net_exit,
 };
 
@@ -1043,8 +1155,16 @@ static int __init inet6_init(void)
 	sock_skb_cb_check_size(sizeof(struct inet6_skb_parm));
 
 	/* Register the socket-side information for inet6_create.  */
-	for (r = &inetsw6[0]; r < &inetsw6[SOCK_MAX]; ++r)
+	for (r = &inetsw6[0]; r < &inetsw6[SOCK_MAX]; ++r) {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+		struct list_head *signed_ptr = hakc_sign_pointer_with_color
+			(r, __claque_id, false);
+		WRITE_ONCE(r->next, signed_ptr);
+		r->prev = signed_ptr;
+#else
 		INIT_LIST_HEAD(r);
+#endif
+	}
 
 	if (disable_ipv6_mod) {
 		pr_info("Loaded, but administratively disabled, reboot required to enable\n");
@@ -1098,9 +1218,11 @@ static int __init inet6_init(void)
 	err = ip6_mr_init();
 	if (err)
 		goto ipmr_fail;
+
 	err = icmpv6_init();
 	if (err)
 		goto icmp_fail;
+
 	err = ndisc_init();
 	if (err)
 		goto ndisc_fail;

@@ -24,6 +24,12 @@
 #include <linux/ipv6.h>
 #include <net/sctp/checksum.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(3, BLUE_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE));
+#endif
+
 static bool nft_payload_rebuild_vlan_hdr(const struct sk_buff *skb, int mac_off,
 					 struct vlan_ethhdr *veth)
 {
@@ -135,7 +141,7 @@ static const struct nla_policy nft_payload_policy[NFTA_PAYLOAD_MAX + 1] = {
 	[NFTA_PAYLOAD_CSUM_FLAGS]	= { .type = NLA_U32 },
 };
 
-static int nft_payload_init(const struct nft_ctx *ctx,
+static hakc_noinline int nft_payload_init(const struct nft_ctx *ctx,
 			    const struct nft_expr *expr,
 			    const struct nlattr * const tb[])
 {
@@ -149,6 +155,18 @@ static int nft_payload_init(const struct nft_ctx *ctx,
 	return nft_validate_register_store(ctx, priv->dreg, NULL,
 					   NFT_DATA_VALUE, priv->len);
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nft_payload_init, int, const struct nft_ctx *ctx,
+			    const struct nft_expr *expr,
+			    const struct nlattr * const tb[])
+{
+  expr = hakc_transfer_to_clique((void*)expr, sizeof(*expr), __claque_id, __color, false);
+  ctx = hakc_transfer_to_clique((void*)ctx, sizeof(*ctx), __claque_id, __color, false);
+  tb = hakc_transfer_nla(tb, NFTA_PAYLOAD_MAX + 1, __claque_id, __color);
+  return nft_payload_init(ctx, expr, tb);
+}
+#endif
 
 static int nft_payload_dump(struct sk_buff *skb, const struct nft_expr *expr)
 {
@@ -463,7 +481,11 @@ static const struct nft_expr_ops nft_payload_ops = {
 	.type		= &nft_payload_type,
 	.size		= NFT_EXPR_SIZE(sizeof(struct nft_payload)),
 	.eval		= nft_payload_eval,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+	.init		= HAKC_OUTSIDE_TRANSFER_FUNC(nft_payload_init),
+#else
 	.init		= nft_payload_init,
+#endif
 	.dump		= nft_payload_dump,
 	.offload	= nft_payload_offload,
 };

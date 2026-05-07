@@ -319,6 +319,10 @@ static inline void ip6_rt_put(struct rt6_info *rt)
 
 struct fib6_info *fib6_info_alloc(gfp_t gfp_flags, bool with_fib6_nh);
 void fib6_info_destroy_rcu(struct rcu_head *head);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(fib6_info_destroy_rcu, void, struct
+				  rcu_head *head);
+#endif
 
 static inline void fib6_info_hold(struct fib6_info *f6i)
 {
@@ -333,7 +337,11 @@ static inline bool fib6_info_hold_safe(struct fib6_info *f6i)
 static inline void fib6_info_release(struct fib6_info *f6i)
 {
 	if (f6i && refcount_dec_and_test(&f6i->fib6_ref))
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+		call_rcu(&f6i->rcu, HAKC_OUTSIDE_TRANSFER_FUNC(fib6_info_destroy_rcu));
+#else
 		call_rcu(&f6i->rcu, fib6_info_destroy_rcu);
+#endif
 }
 
 static inline void fib6_info_hw_flags_set(struct fib6_info *f6i, bool offload,

@@ -69,6 +69,14 @@
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv6.h>
 
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+         HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 static u32 ndisc_hash(const void *pkey,
 		      const struct net_device *dev,
 		      __u32 *hash_rnd);
@@ -324,48 +332,83 @@ static bool ndisc_key_eq(const struct neighbour *n, const void *pkey)
 
 static int ndisc_constructor(struct neighbour *neigh)
 {
-	struct in6_addr *addr = (struct in6_addr *)&neigh->primary_key;
-	struct net_device *dev = neigh->dev;
+	struct in6_addr addr_copy;
+	struct net_device *dev;
 	struct inet6_dev *in6_dev;
 	struct neigh_parms *parms;
-	bool is_multicast = ipv6_addr_is_multicast(addr);
+	const struct header_ops *hop;
+	const struct neigh_ops *ops;
+	unsigned int flags;
+	unsigned char addr_len;
+	const unsigned char *dev_addr = NULL;
+	const unsigned char *broadcast = NULL;
+	bool is_multicast;
+
+	neigh = (struct neighbour *)hakc_safe_ptr(neigh);
+	if (!neigh)
+		return -EINVAL;
+
+	dev = (struct net_device *)hakc_safe_ptr(neigh->dev);
+	if (!dev)
+		return -EINVAL;
+
+	memcpy(&addr_copy, &neigh->primary_key, sizeof(addr_copy));
+	is_multicast = ipv6_addr_is_multicast(&addr_copy);
+
+	flags = dev->flags;
+	addr_len = dev->addr_len;
+	hop = (const struct header_ops *)hakc_safe_ptr(dev->header_ops);
+	dev_addr = (const unsigned char *)hakc_safe_ptr(dev->dev_addr);
+	broadcast = (const unsigned char *)hakc_safe_ptr(dev->broadcast);
 
 	in6_dev = in6_dev_get(dev);
-	if (!in6_dev) {
+	in6_dev = (struct inet6_dev *)hakc_safe_ptr(in6_dev);
+	if (!in6_dev)
+		return -EINVAL;
+
+	parms = (struct neigh_parms *)hakc_safe_ptr(in6_dev->nd_parms);
+	if (!parms) {
+		in6_dev_put(in6_dev);
 		return -EINVAL;
 	}
 
-	parms = in6_dev->nd_parms;
-	__neigh_parms_put(neigh->parms);
+	if (neigh->parms)
+		__neigh_parms_put((struct neigh_parms *)hakc_safe_ptr(neigh->parms));
 	neigh->parms = neigh_parms_clone(parms);
 
 	neigh->type = is_multicast ? RTN_MULTICAST : RTN_UNICAST;
-	if (!dev->header_ops) {
+
+	if (!hop) {
 		neigh->nud_state = NUD_NOARP;
-		neigh->ops = &ndisc_direct_ops;
+		ops = &ndisc_direct_ops;
 		neigh->output = neigh_direct_output;
+		neigh->ops = ops;
 	} else {
 		if (is_multicast) {
 			neigh->nud_state = NUD_NOARP;
-			ndisc_mc_map(addr, neigh->ha, dev, 1);
-		} else if (dev->flags&(IFF_NOARP|IFF_LOOPBACK)) {
+			ndisc_mc_map(&addr_copy, neigh->ha, dev, 1);
+		} else if (flags & (IFF_NOARP | IFF_LOOPBACK)) {
 			neigh->nud_state = NUD_NOARP;
-			memcpy(neigh->ha, dev->dev_addr, dev->addr_len);
-			if (dev->flags&IFF_LOOPBACK)
+			if (dev_addr)
+				memcpy(neigh->ha, dev_addr, addr_len);
+			if (flags & IFF_LOOPBACK)
 				neigh->type = RTN_LOCAL;
-		} else if (dev->flags&IFF_POINTOPOINT) {
+		} else if (flags & IFF_POINTOPOINT) {
 			neigh->nud_state = NUD_NOARP;
-			memcpy(neigh->ha, dev->broadcast, dev->addr_len);
+			if (broadcast)
+				memcpy(neigh->ha, broadcast, addr_len);
 		}
-		if (dev->header_ops->cache)
-			neigh->ops = &ndisc_hh_ops;
+
+		ops = hop->cache ? &ndisc_hh_ops : &ndisc_generic_ops;
+
+		if (neigh->nud_state & NUD_VALID)
+			neigh->output = ops->connected_output;
 		else
-			neigh->ops = &ndisc_generic_ops;
-		if (neigh->nud_state&NUD_VALID)
-			neigh->output = neigh->ops->connected_output;
-		else
-			neigh->output = neigh->ops->output;
+			neigh->output = ops->output;
+
+		neigh->ops = ops;
 	}
+
 	in6_dev_put(in6_dev);
 	return 0;
 }
@@ -892,6 +935,7 @@ have_ifp:
 		    (idev->cnf.forwarding &&
 		     (net->ipv6.devconf_all->proxy_ndp || idev->cnf.proxy_ndp) &&
 		     (is_router = pndisc_is_router(&msg->target, dev)) >= 0)) {
+idev = hakc_safe_ptr(idev);//hakc_sign_pointer_with_color(idev,2,false);
 			if (!(NEIGH_CB(skb)->flags & LOCALLY_ENQUEUED) &&
 			    skb->pkt_type != PACKET_HOST &&
 			    inc &&
@@ -1138,6 +1182,14 @@ static void ndisc_ra_useropt(struct sk_buff *ra, struct nd_opt_hdr *opt)
 		err = -ENOBUFS;
 		goto errout;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	skb = hakc_transfer_to_clique(skb, sizeof(*skb), __claque_id, __color,
+				     false);
+	skb->data = skb->head = hakc_transfer_to_clique(skb->data,
+						       skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+						       __claque_id,
+						       __color, false);
+#endif
 
 	nlh = nlmsg_put(skb, 0, 0, RTM_NEWNDUSEROPT, base_size, 0);
 	if (!nlh) {
@@ -1779,7 +1831,8 @@ int ndisc_rcv(struct sk_buff *skb)
 	return 0;
 }
 
-static int ndisc_netdev_event(struct notifier_block *this, unsigned long event, void *ptr)
+static int noinline ndisc_netdev_event(struct notifier_block *this, unsigned
+				      long event, void *ptr)
 {
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct netdev_notifier_change_info *change_info;
@@ -1821,8 +1874,44 @@ static int ndisc_netdev_event(struct notifier_block *this, unsigned long event, 
 	return NOTIFY_DONE;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(ndisc_netdev_event, int,
+				  struct notifier_block *this,
+				  unsigned long event,
+				  void *ptr)
+{
+	int result;
+	void* prot_v;
+	clique_color_t dev_color;
+	claque_id_t dev_claque;
+
+	struct netdev_notifier_info *info = (struct netdev_notifier_info*)ptr;
+
+	dev_color = get_hakc_address_color(info->dev);
+	dev_claque = get_hakc_address_claque(info->dev);
+	this = hakc_transfer_to_clique(this, sizeof(*this), __claque_id,
+					 __color, false);
+	info->dev = hakc_transfer_to_clique(info->dev, sizeof(struct
+							     net_device),
+					   __claque_id, __color, false);
+	prot_v = hakc_transfer_to_clique(info, sizeof(struct netdev_notifier_info),
+					__claque_id, __color, false);
+
+	result = ndisc_netdev_event(this, event, prot_v);
+
+	info->dev = hakc_transfer_to_clique(info->dev,
+					   sizeof(struct net_device),
+					   dev_claque, dev_color, false);
+	return result;
+}
+#endif
+
 static struct notifier_block ndisc_netdev_notifier = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.notifier_call = HAKC_OUTSIDE_TRANSFER_FUNC(ndisc_netdev_event),
+#else
 	.notifier_call = ndisc_netdev_event,
+#endif
 	.priority = ADDRCONF_NOTIFY_PRIORITY - 5,
 };
 
@@ -1881,7 +1970,7 @@ int ndisc_ifinfo_sysctl_change(struct ctl_table *ctl, int write, void *buffer,
 
 #endif
 
-static int __net_init ndisc_net_init(struct net *net)
+static int __net_init noinline ndisc_net_init(struct net *net)
 {
 	struct ipv6_pinfo *np;
 	struct sock *sk;
@@ -1895,6 +1984,10 @@ static int __net_init ndisc_net_init(struct net *net)
 			  err);
 		return err;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	sk = hakc_transfer_to_clique(sk, sizeof(*sk), __claque_id, __color,
+				    false);
+#endif
 
 	net->ipv6.ndisc_sk = sk;
 
@@ -1906,13 +1999,34 @@ static int __net_init ndisc_net_init(struct net *net)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(ndisc_net_init, int, struct net* net) {
+	int result;
+
+	struct proc_dir_entry *orig_proc_net = net->proc_net;
+	/* NB: The sizes were determined at run time */
+	net->proc_net = hakc_transfer_to_clique(net->proc_net, 172,
+						__claque_id, __color, false);
+	net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id,
+				      __color, false);
+	result = ndisc_net_init(net);
+	HAKC_GET_SAFE_PTR(net)->proc_net = orig_proc_net;
+
+	return result;
+}
+#endif
+
 static void __net_exit ndisc_net_exit(struct net *net)
 {
 	inet_ctl_sock_destroy(net->ipv6.ndisc_sk);
 }
 
 static struct pernet_operations ndisc_net_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+	.init = HAKC_OUTSIDE_TRANSFER_FUNC(ndisc_net_init),
+#else
 	.init = ndisc_net_init,
+#endif
 	.exit = ndisc_net_exit,
 };
 

@@ -23,6 +23,15 @@
 #include <net/net_namespace.h>
 #include <net/sock.h>
 
+
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+#include <linux/hakc-transfer.h>
+HAKC_MODULE_CLAQUE(3, BLUE_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE));
+HAKC_EXIT(HAKC_ENTRY_TOKEN(0, HAKC_MASK_COLOR(SILVER_CLIQUE)),
+         HAKC_ENTRY_TOKEN(1, HAKC_MASK_COLOR(SILVER_CLIQUE)));
+#endif
+
 #define NFT_MODULE_AUTOLOAD_LIMIT (MODULE_NAME_LEN - sizeof("nft-expr-255-"))
 
 static LIST_HEAD(nf_tables_expressions);
@@ -48,7 +57,11 @@ static u32 nft_objname_hash(const void *data, u32 len, u32 seed);
 static u32 nft_objname_hash_obj(const void *data, u32 len, u32 seed);
 static int nft_objname_hash_cmp(struct rhashtable_compare_arg *, const void *);
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+static struct rhashtable_params nft_chain_ht_params = {
+#else
 static const struct rhashtable_params nft_chain_ht_params = {
+#endif
 	.head_offset		= offsetof(struct nft_chain, rhlhead),
 	.key_offset		= offsetof(struct nft_chain, name),
 	.hashfn			= nft_chain_hash,
@@ -57,7 +70,11 @@ static const struct rhashtable_params nft_chain_ht_params = {
 	.automatic_shrinking	= true,
 };
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+static struct rhashtable_params nft_objname_ht_params = {
+#else
 static const struct rhashtable_params nft_objname_ht_params = {
+#endif
 	.head_offset		= offsetof(struct nft_object, rhlhead),
 	.key_offset		= offsetof(struct nft_object, key),
 	.hashfn			= nft_objname_hash,
@@ -113,6 +130,10 @@ static struct nft_trans *nft_trans_alloc_gfp(const struct nft_ctx *ctx,
 	trans = kzalloc(sizeof(struct nft_trans) + size, gfp);
 	if (trans == NULL)
 		return NULL;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+trans  = hakc_transfer_to_clique(trans, sizeof(struct nft_trans) + size,
+                            __claque_id, __color, false);
+#endif
 
 	trans->msg_type = msg_type;
 	trans->ctx	= *ctx;
@@ -514,7 +535,6 @@ static struct nft_table *nft_table_lookup(const struct net *net,
 
 	if (nla == NULL)
 		return ERR_PTR(-EINVAL);
-
 	list_for_each_entry_rcu(table, &net->nft.tables, list,
 				lockdep_is_held(&net->nft.commit_mutex)) {
 		if (!nla_strcmp(nla, table->name) &&
@@ -587,7 +607,6 @@ static int nft_request_module(struct net *net, const char *fmt, ...)
 	struct nft_module_request *req;
 	va_list args;
 	int ret;
-
 	va_start(args, fmt);
 	ret = vsnprintf(module_name, MODULE_NAME_LEN, fmt, args);
 	va_end(args);
@@ -607,6 +626,10 @@ static int nft_request_module(struct net *net, const char *fmt, ...)
 	req = kmalloc(sizeof(*req), GFP_KERNEL);
 	if (!req)
 		return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+req  = hakc_transfer_to_clique(req, sizeof(*req),
+                            __claque_id, __color, false);
+#endif
 
 	req->done = false;
 	strlcpy(req->module, module_name, MODULE_NAME_LEN);
@@ -727,6 +750,12 @@ static void nf_tables_table_notify(const struct nft_ctx *ctx, int event)
 	skb = nlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (skb == NULL)
 		goto err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb  = hakc_transfer_to_clique(skb, sizeof(*skb),
+                            __claque_id, __color, false);
+skb->data = skb->head = hakc_transfer_to_clique(skb->data, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_fill_table_info(skb, ctx->net, ctx->portid, ctx->seq,
 					event, 0, ctx->family, ctx->table);
@@ -741,7 +770,7 @@ err:
 	nfnetlink_set_err(ctx->net, ctx->portid, NFNLGRP_NFTABLES, -ENOBUFS);
 }
 
-static int nf_tables_dump_tables(struct sk_buff *skb,
+static hakc_noinline int nf_tables_dump_tables(struct sk_buff *skb,
 				 struct netlink_callback *cb)
 {
 	const struct nfgenmsg *nfmsg = nlmsg_data(cb->nlh);
@@ -754,23 +783,27 @@ static int nf_tables_dump_tables(struct sk_buff *skb,
 	cb->seq = net->nft.base_seq;
 
 	list_for_each_entry_rcu(table, &net->nft.tables, list) {
-		if (family != NFPROTO_UNSPEC && family != table->family)
+		if (family != NFPROTO_UNSPEC && family != table->family) {
 			continue;
+    }
 
-		if (idx < s_idx)
+		if (idx < s_idx) {
 			goto cont;
-		if (idx > s_idx)
+    }
+		if (idx > s_idx) {
 			memset(&cb->args[1], 0,
 			       sizeof(cb->args) - sizeof(cb->args[0]));
-		if (!nft_is_active(net, table))
+    }
+		if (!nft_is_active(net, table)) {
 			continue;
+    }
 		if (nf_tables_fill_table_info(skb, net,
 					      NETLINK_CB(cb->skb).portid,
 					      cb->nlh->nlmsg_seq,
 					      NFT_MSG_NEWTABLE, NLM_F_MULTI,
-					      table->family, table) < 0)
+					      table->family, table) < 0) {
 			goto done;
-
+    }
 		nl_dump_check_consistent(cb, nlmsg_hdr(skb));
 cont:
 		idx++;
@@ -780,6 +813,18 @@ done:
 	cb->args[0] = idx;
 	return skb->len;
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_tables, int, struct sk_buff *skb,
+				 struct netlink_callback *cb)
+{
+  skb->sk->sk_net.net = hakc_transfer_to_clique(skb->sk->sk_net.net, sizeof(*skb->sk->sk_net.net), __claque_id, __color, false);
+  skb->sk = hakc_transfer_to_clique(skb->sk, sizeof(*skb->sk), __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_tables(skb, cb);
+}
+#endif
 
 static int nft_netlink_dump_start_rcu(struct sock *nlsk, struct sk_buff *skb,
 				      const struct nlmsghdr *nlh,
@@ -799,7 +844,7 @@ static int nft_netlink_dump_start_rcu(struct sock *nlsk, struct sk_buff *skb,
 }
 
 /* called with rcu_read_lock held */
-static int nf_tables_gettable(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_gettable(struct net *net, struct sock *nlsk,
 			      struct sk_buff *skb, const struct nlmsghdr *nlh,
 			      const struct nlattr * const nla[],
 			      struct netlink_ext_ack *extack)
@@ -810,14 +855,17 @@ static int nf_tables_gettable(struct net *net, struct sock *nlsk,
 	struct sk_buff *skb2;
 	int family = nfmsg->nfgen_family;
 	int err;
-
 	if (nlh->nlmsg_flags & NLM_F_DUMP) {
 		struct netlink_dump_control c = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+			.dump = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_tables),
+#else
 			.dump = nf_tables_dump_tables,
+#endif
 			.module = THIS_MODULE,
 		};
-
-		return nft_netlink_dump_start_rcu(nlsk, skb, nlh, &c);
+		int val = nft_netlink_dump_start_rcu(nlsk, skb, nlh, &c);
+    return val;
 	}
 
 	table = nft_table_lookup(net, nla[NFTA_TABLE_NAME], family, genmask);
@@ -835,13 +883,25 @@ static int nf_tables_gettable(struct net *net, struct sock *nlsk,
 					family, table);
 	if (err < 0)
 		goto err_fill_table_info;
-
 	return nfnetlink_unicast(skb2, net, NETLINK_CB(skb).portid);
 
 err_fill_table_info:
 	kfree_skb(skb2);
 	return err;
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_gettable, int, struct net *net, struct sock *nlsk,
+			      struct sk_buff *skb, const struct nlmsghdr *nlh,
+			      const struct nlattr * const nla[],
+			      struct netlink_ext_ack *extack)
+{
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  nlh = hakc_transfer_to_clique((void*)nlh, nlh->nlmsg_len, __claque_id, __color, false);
+  return nf_tables_gettable(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
 
 static void nft_table_disable(struct net *net, struct nft_table *table, u32 cnt)
 {
@@ -938,15 +998,18 @@ err:
 static u32 nft_chain_hash(const void *data, u32 len, u32 seed)
 {
 	const char *name = data;
-
-	return jhash(name, strlen(name), seed);
+	u32 val = jhash(name, strlen(name), seed);
+  return val;
 }
 
 static u32 nft_chain_hash_obj(const void *data, u32 len, u32 seed)
 {
 	const struct nft_chain *chain = data;
-
-	return nft_chain_hash(chain->name, 0, seed);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  chain = hakc_transfer_to_clique((void*)chain, sizeof(*chain), __claque_id, __color, false);
+#endif
+	u32 val = nft_chain_hash(chain->name, 0, seed);
+  return val;
 }
 
 static int nft_chain_hash_cmp(struct rhashtable_compare_arg *arg,
@@ -955,7 +1018,8 @@ static int nft_chain_hash_cmp(struct rhashtable_compare_arg *arg,
 	const struct nft_chain *chain = ptr;
 	const char *name = arg->key;
 
-	return strcmp(chain->name, name);
+	int val = strcmp(chain->name, name);
+  return val;
 }
 
 static u32 nft_objname_hash(const void *data, u32 len, u32 seed)
@@ -986,7 +1050,7 @@ static int nft_objname_hash_cmp(struct rhashtable_compare_arg *arg,
 	return strcmp(obj->key.name, k->name);
 }
 
-static int nf_tables_newtable(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_newtable(struct net *net, struct sock *nlsk,
 			      struct sk_buff *skb, const struct nlmsghdr *nlh,
 			      const struct nlattr * const nla[],
 			      struct netlink_ext_ack *extack)
@@ -999,6 +1063,9 @@ static int nf_tables_newtable(struct net *net, struct sock *nlsk,
 	struct nft_ctx ctx;
 	u32 flags = 0;
 	int err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  int i;
+#endif
 
 	lockdep_assert_held(&net->nft.commit_mutex);
 	attr = nla[NFTA_TABLE_NAME];
@@ -1028,20 +1095,42 @@ static int nf_tables_newtable(struct net *net, struct sock *nlsk,
 	table = kzalloc(sizeof(*table), GFP_KERNEL);
 	if (table == NULL)
 		goto err_kzalloc;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+table  = hakc_transfer_to_clique(table, sizeof(*table),
+                            __claque_id, __color, false);
+#endif
 
 	table->name = nla_strdup(attr, GFP_KERNEL);
 	if (table->name == NULL)
 		goto err_strdup;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  table->name = hakc_transfer_string(table->name, __claque_id, __color);  
+#endif
 
 	if (nla[NFTA_TABLE_USERDATA]) {
 		table->udata = nla_memdup(nla[NFTA_TABLE_USERDATA], GFP_KERNEL);
 		if (table->udata == NULL)
 			goto err_table_udata;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+table->udata  = hakc_transfer_to_clique(table->udata,
+                            nla_len(nla[NFTA_TABLE_USERDATA]),
+                            __claque_id, __color, false);
+#endif
 
 		table->udlen = nla_len(nla[NFTA_TABLE_USERDATA]);
 	}
 
 	err = rhltable_init(&table->chains_ht, &nft_chain_ht_params);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  table->chains_ht.ht.tbl = hakc_transfer_to_clique(table->chains_ht.ht.tbl,
+                                                 sizeof(*table->chains_ht.ht.tbl),
+                                                 __claque_id, __color, false);
+  for(i = 0; i < table->chains_ht.ht.tbl->size; i++) {
+    hakc_transfer_to_clique(HAKC_GET_SAFE_PTR(&table->chains_ht.ht.tbl->buckets[i]),
+                                                                sizeof(void*),
+                                                                __claque_id, __color, false);
+  }
+#endif
 	if (err)
 		goto err_chain_ht;
 
@@ -1071,6 +1160,20 @@ err_strdup:
 err_kzalloc:
 	return err;
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_newtable, int,struct net *net, struct sock *nlsk,
+			      struct sk_buff *skb, const struct nlmsghdr *nlh,
+			      const struct nlattr * const nla[],
+			      struct netlink_ext_ack *extack)
+{
+  nlh = hakc_transfer_to_clique((void*)nlh, nlh->nlmsg_len, __claque_id, __color, false);
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  nla = hakc_transfer_nla(nla, NFTA_TABLE_MAX + 1, __claque_id, __color);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  return nf_tables_newtable(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
 
 static int nft_flush_table(struct nft_ctx *ctx)
 {
@@ -1442,7 +1545,6 @@ static int nf_tables_fill_chain_info(struct sk_buff *skb, struct net *net,
 		if (nla_put_be32(skb, NFTA_CHAIN_POLICY,
 				 htonl(basechain->policy)))
 			goto nla_put_failure;
-
 		if (nla_put_string(skb, NFTA_CHAIN_TYPE, basechain->type->name))
 			goto nla_put_failure;
 
@@ -1495,6 +1597,12 @@ static void nf_tables_chain_notify(const struct nft_ctx *ctx, int event)
 	skb = nlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (skb == NULL)
 		goto err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb  = hakc_transfer_to_clique(skb, sizeof(*skb),
+                            __claque_id, __color, false);
+skb->data = skb->head = hakc_transfer_to_clique(skb->data, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_fill_chain_info(skb, ctx->net, ctx->portid, ctx->seq,
 					event, 0, ctx->family, ctx->table,
@@ -1510,7 +1618,7 @@ err:
 	nfnetlink_set_err(ctx->net, ctx->portid, NFNLGRP_NFTABLES, -ENOBUFS);
 }
 
-static int nf_tables_dump_chains(struct sk_buff *skb,
+static hakc_noinline int nf_tables_dump_chains(struct sk_buff *skb,
 				 struct netlink_callback *cb)
 {
 	const struct nfgenmsg *nfmsg = nlmsg_data(cb->nlh);
@@ -1554,9 +1662,20 @@ done:
 	cb->args[0] = idx;
 	return skb->len;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_chains, int, struct sk_buff *skb,
+				 struct netlink_callback *cb)
+{
+  skb->sk->sk_net.net = hakc_transfer_to_clique(skb->sk->sk_net.net, sizeof(*skb->sk->sk_net.net), __claque_id, __color, false);
+  skb->sk = hakc_transfer_to_clique(skb->sk, sizeof(*skb->sk), __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_chains(skb, cb);
+}
+#endif 
 
 /* called with rcu_read_lock held */
-static int nf_tables_getchain(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_getchain(struct net *net, struct sock *nlsk,
 			      struct sk_buff *skb, const struct nlmsghdr *nlh,
 			      const struct nlattr * const nla[],
 			      struct netlink_ext_ack *extack)
@@ -1568,10 +1687,13 @@ static int nf_tables_getchain(struct net *net, struct sock *nlsk,
 	struct sk_buff *skb2;
 	int family = nfmsg->nfgen_family;
 	int err;
-
 	if (nlh->nlmsg_flags & NLM_F_DUMP) {
 		struct netlink_dump_control c = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+			.dump = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_chains),
+#else
 			.dump = nf_tables_dump_chains,
+#endif
 			.module = THIS_MODULE,
 		};
 
@@ -1607,6 +1729,19 @@ err_fill_chain_info:
 	return err;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getchain, int, struct net *net, struct sock *nlsk,
+			      struct sk_buff *skb, const struct nlmsghdr *nlh,
+			      const struct nlattr * const nla[],
+			      struct netlink_ext_ack *extack)
+{
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  nlh = hakc_transfer_to_clique((void*)nlh, nlh->nlmsg_len, __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  return nf_tables_getchain(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
+
 static const struct nla_policy nft_counter_policy[NFTA_COUNTER_MAX + 1] = {
 	[NFTA_COUNTER_PACKETS]	= { .type = NLA_U64 },
 	[NFTA_COUNTER_BYTES]	= { .type = NLA_U64 },
@@ -1626,8 +1761,11 @@ static struct nft_stats __percpu *nft_stats_alloc(const struct nlattr *attr)
 
 	if (!tb[NFTA_COUNTER_BYTES] || !tb[NFTA_COUNTER_PACKETS])
 		return ERR_PTR(-EINVAL);
-
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  newstats = hakc_netdev_alloc_pcpu_stats(struct nft_stats, __claque_id, __color);
+#else
 	newstats = netdev_alloc_pcpu_stats(struct nft_stats);
+#endif
 	if (newstats == NULL)
 		return ERR_PTR(-ENOMEM);
 
@@ -1721,6 +1859,10 @@ static struct nft_hook *nft_netdev_hook_alloc(struct net *net,
 		err = -ENOMEM;
 		goto err_hook_alloc;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+hook  = hakc_transfer_to_clique(hook, sizeof(*hook),
+                            __claque_id, __color, false);
+#endif
 
 	nla_strlcpy(ifname, attr, IFNAMSIZ);
 	/* nf_tables_netdev_event() is called under rtnl_mutex, this is
@@ -1842,7 +1984,10 @@ static int nft_chain_parse_hook(struct net *net,
 	struct nlattr *ha[NFTA_HOOK_MAX + 1];
 	const struct nft_chain_type *type;
 	int err;
-
+  //Shouldn't need this!!
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  hook = hakc_transfer_to_clique(hook, sizeof(*hook), __claque_id, __color, false);
+#endif
 	lockdep_assert_held(&net->nft.commit_mutex);
 	lockdep_nfnl_nft_mutex_not_held();
 
@@ -1855,7 +2000,6 @@ static int nft_chain_parse_hook(struct net *net,
 	if (ha[NFTA_HOOK_HOOKNUM] == NULL ||
 	    ha[NFTA_HOOK_PRIORITY] == NULL)
 		return -EINVAL;
-
 	hook->num = ntohl(nla_get_be32(ha[NFTA_HOOK_HOOKNUM]));
 	hook->priority = ntohl(nla_get_be32(ha[NFTA_HOOK_PRIORITY]));
 
@@ -1924,8 +2068,11 @@ static struct nft_rule **nf_tables_chain_alloc_rules(const struct nft_chain *cha
 
 	alloc *= sizeof(struct nft_rule *);
 	alloc += sizeof(struct nft_rules_old);
-
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  return hakc_transfer_to_clique(kvmalloc(alloc, GFP_KERNEL), alloc, __claque_id, __color, false); 
+#else
 	return kvmalloc(alloc, GFP_KERNEL);
+#endif
 }
 
 static void nft_basechain_hook_init(struct nf_hook_ops *ops, u8 family,
@@ -1974,7 +2121,6 @@ static int nft_basechain_init(struct nft_base_chain *basechain, u8 family,
 static int nft_chain_add(struct nft_table *table, struct nft_chain *chain)
 {
 	int err;
-
 	err = rhltable_insert_key(&table->chains_ht, chain->name,
 				  &chain->rhlhead, nft_chain_ht_params);
 	if (err)
@@ -2000,7 +2146,6 @@ static int nf_tables_addchain(struct nft_ctx *ctx, u8 family, u8 genmask,
 	struct nft_chain *chain;
 	struct nft_rule **rules;
 	int err;
-
 	if (table->use == UINT_MAX)
 		return -EOVERFLOW;
 
@@ -2019,6 +2164,10 @@ static int nf_tables_addchain(struct nft_ctx *ctx, u8 family, u8 genmask,
 			nft_chain_release_hook(&hook);
 			return -ENOMEM;
 		}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+basechain  = hakc_transfer_to_clique(basechain, sizeof(*basechain),
+                            __claque_id, __color, false);
+#endif
 		chain = &basechain->chain;
 
 		if (nla[NFTA_CHAIN_COUNTERS]) {
@@ -2047,6 +2196,10 @@ static int nf_tables_addchain(struct nft_ctx *ctx, u8 family, u8 genmask,
 		chain = kzalloc(sizeof(*chain), GFP_KERNEL);
 		if (chain == NULL)
 			return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+chain  = hakc_transfer_to_clique(chain, sizeof(*chain),
+                            __claque_id, __color, false);
+#endif
 
 		chain->flags = flags;
 	}
@@ -2058,6 +2211,13 @@ static int nf_tables_addchain(struct nft_ctx *ctx, u8 family, u8 genmask,
 
 	if (nla[NFTA_CHAIN_NAME]) {
 		chain->name = nla_strdup(nla[NFTA_CHAIN_NAME], GFP_KERNEL);
+    if (!chain->name) {
+      err = -ENOMEM;
+      goto err_destroy_chain;
+    }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  chain->name = hakc_transfer_string(chain->name, __claque_id, __color);  
+#endif
 	} else {
 		if (!(flags & NFT_CHAIN_BINDING)) {
 			err = -EINVAL;
@@ -2079,6 +2239,11 @@ static int nf_tables_addchain(struct nft_ctx *ctx, u8 family, u8 genmask,
 			err = -ENOMEM;
 			goto err_destroy_chain;
 		}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+chain->udata  = hakc_transfer_to_clique(chain->udata,
+                            nla_len(nla[NFTA_CHAIN_USERDATA]),
+                            __claque_id, __color, false);
+#endif
 		chain->udlen = nla_len(nla[NFTA_CHAIN_USERDATA]);
 	}
 
@@ -2155,7 +2320,6 @@ static int nf_tables_updchain(struct nft_ctx *ctx, u8 genmask, u8 policy,
 	struct nf_hook_ops *ops;
 	struct nft_trans *trans;
 	int err;
-
 	if (chain->flags ^ flags)
 		return -EOPNOTSUPP;
 
@@ -2239,6 +2403,9 @@ static int nf_tables_updchain(struct nft_ctx *ctx, u8 genmask, u8 policy,
 		name = nla_strdup(nla[NFTA_CHAIN_NAME], GFP_KERNEL);
 		if (!name)
 			goto err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  name = hakc_transfer_string(name, __claque_id, __color);  
+#endif
 
 		err = -EEXIST;
 		list_for_each_entry(tmp, &ctx->net->nft.commit_list, list) {
@@ -2280,7 +2447,7 @@ static struct nft_chain *nft_chain_lookup_byid(const struct net *net,
 	return ERR_PTR(-ENOENT);
 }
 
-static int nf_tables_newchain(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_newchain(struct net *net, struct sock *nlsk,
 			      struct sk_buff *skb, const struct nlmsghdr *nlh,
 			      const struct nlattr * const nla[],
 			      struct netlink_ext_ack *extack)
@@ -2351,10 +2518,11 @@ static int nf_tables_newchain(struct net *net, struct sock *nlsk,
 		}
 	}
 
-	if (nla[NFTA_CHAIN_FLAGS])
+	if (nla[NFTA_CHAIN_FLAGS]) {
 		flags = ntohl(nla_get_be32(nla[NFTA_CHAIN_FLAGS]));
-	else if (chain)
+  } else if (chain) {
 		flags = chain->flags;
+  }
 
 	if (flags & ~NFT_CHAIN_FLAGS)
 		return -EOPNOTSUPP;
@@ -2376,6 +2544,21 @@ static int nf_tables_newchain(struct net *net, struct sock *nlsk,
 
 	return nf_tables_addchain(&ctx, family, genmask, policy, flags);
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_newchain, int, struct net *net, struct sock *nlsk,
+			      struct sk_buff *skb, const struct nlmsghdr *nlh,
+			      const struct nlattr * const nla[],
+			      struct netlink_ext_ack *extack)
+{
+  nlh = hakc_transfer_to_clique((void *)nlh, sizeof(*nlh), __claque_id, __color, false);
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  extack = hakc_transfer_to_clique(extack, sizeof(*extack), __claque_id, __color, false);
+  nla = hakc_transfer_nla(nla, NFTA_CHAIN_MAX + 1, __claque_id, __color);
+  return nf_tables_newchain(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
 
 static int nf_tables_delchain(struct net *net, struct sock *nlsk,
 			      struct sk_buff *skb, const struct nlmsghdr *nlh,
@@ -2454,6 +2637,12 @@ static int nf_tables_delchain(struct net *net, struct sock *nlsk,
  */
 int nft_register_expr(struct nft_expr_type *type)
 {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  type = hakc_transfer_to_clique(type, sizeof(*type), __claque_id, __color, false);
+  if (type->select_ops != NULL) { 
+    type->select_ops = hakc_sign_pointer(type->select_ops, __claque_id, __color, false);
+  }
+#endif
 	nfnl_lock(NFNL_SUBSYS_NFTABLES);
 	if (type->family == NFPROTO_UNSPEC)
 		list_add_tail_rcu(&type->list, &nf_tables_expressions);
@@ -2612,7 +2801,7 @@ static int nf_tables_expr_parse(const struct nft_ctx *ctx,
 	} else
 		memset(info->tb, 0, sizeof(info->tb[0]) * (type->maxattr + 1));
 
-	if (type->select_ops != NULL) {
+    if (type->select_ops != NULL) {
 		ops = type->select_ops(ctx,
 				       (const struct nlattr * const *)info->tb);
 		if (IS_ERR(ops)) {
@@ -2630,6 +2819,42 @@ static int nf_tables_expr_parse(const struct nft_ctx *ctx,
 		ops = type->ops;
 
 	info->attr = nla;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+    ops = hakc_transfer_to_clique((void*)ops, sizeof(*ops), __claque_id, __color, false);
+    if(ops->init != NULL) {
+      ((struct nft_expr_ops*)ops)->init = hakc_sign_pointer_with_color((void*)ops->init, __claque_id, false);
+    }
+    if(ops->eval != NULL) {
+      ((struct nft_expr_ops*)ops)->eval = hakc_sign_pointer_with_color((void*)ops->eval, __claque_id, false);
+    }
+    if(ops->clone != NULL) {
+      ((struct nft_expr_ops*)ops)->clone = hakc_sign_pointer_with_color((void*)ops->clone, __claque_id, false);
+    }
+    if(ops->activate != NULL) {
+      ((struct nft_expr_ops*)ops)->activate = hakc_sign_pointer_with_color((void*)ops->activate, __claque_id, false);
+    }
+    if(ops->deactivate != NULL) {
+      ((struct nft_expr_ops*)ops)->deactivate = hakc_sign_pointer_with_color((void*)ops->deactivate, __claque_id, false);
+    }
+    if(ops->destroy != NULL) {
+      ((struct nft_expr_ops*)ops)->destroy = hakc_sign_pointer_with_color((void*)ops->destroy, __claque_id, false);
+    }
+    if(ops->destroy_clone != NULL) {
+      ((struct nft_expr_ops*)ops)->destroy_clone = hakc_sign_pointer_with_color((void*)ops->destroy_clone, __claque_id, false);
+    }
+    if(ops->dump != NULL) {
+      ((struct nft_expr_ops*)ops)->dump = hakc_sign_pointer_with_color((void*)ops->dump, __claque_id, false);
+    }
+    if(ops->validate != NULL) {
+      ((struct nft_expr_ops*)ops)->validate = hakc_sign_pointer_with_color((void*)ops->validate, __claque_id, false);
+    }
+    if(ops->gc != NULL) {
+      ((struct nft_expr_ops*)ops)->gc = hakc_sign_pointer_with_color((void*)ops->gc, __claque_id, false);
+    }
+    if(ops->offload != NULL) {
+      ((struct nft_expr_ops*)ops)->offload = hakc_sign_pointer_with_color((void*)ops->offload, __claque_id, false);
+    }
+#endif
 	info->ops = ops;
 
 	return 0;
@@ -2685,6 +2910,10 @@ static struct nft_expr *nft_expr_init(const struct nft_ctx *ctx,
 	expr = kzalloc(info.ops->size, GFP_KERNEL);
 	if (expr == NULL)
 		goto err2;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+expr  = hakc_transfer_to_clique(expr, info.ops->size,
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_newexpr(ctx, &info, expr);
 	if (err < 0)
@@ -2857,6 +3086,12 @@ static void nf_tables_rule_notify(const struct nft_ctx *ctx,
 	skb = nlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (skb == NULL)
 		goto err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb  = hakc_transfer_to_clique(skb, sizeof(*skb),
+                            __claque_id, __color, false);
+skb->data = skb->head = hakc_transfer_to_clique(skb->data, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_fill_rule_info(skb, ctx->net, ctx->portid, ctx->seq,
 				       event, 0, ctx->family, ctx->table,
@@ -2977,6 +3212,10 @@ static int nf_tables_dump_rules_start(struct netlink_callback *cb)
 		ctx = kzalloc(sizeof(*ctx), GFP_ATOMIC);
 		if (!ctx)
 			return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+ctx  = hakc_transfer_to_clique(ctx, sizeof(*ctx),
+                            __claque_id, __color, false);
+#endif
 
 		if (nla[NFTA_RULE_TABLE]) {
 			ctx->table = nla_strdup(nla[NFTA_RULE_TABLE],
@@ -2985,6 +3224,9 @@ static int nf_tables_dump_rules_start(struct netlink_callback *cb)
 				kfree(ctx);
 				return -ENOMEM;
 			}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  ctx->table = hakc_transfer_string(ctx->table, __claque_id, __color);  
+#endif
 		}
 		if (nla[NFTA_RULE_CHAIN]) {
 			ctx->chain = nla_strdup(nla[NFTA_RULE_CHAIN],
@@ -2994,6 +3236,9 @@ static int nf_tables_dump_rules_start(struct netlink_callback *cb)
 				kfree(ctx);
 				return -ENOMEM;
 			}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  ctx->chain = hakc_transfer_string(ctx->chain, __claque_id, __color);  
+#endif
 		}
 	}
 
@@ -3154,7 +3399,7 @@ static struct nft_rule *nft_rule_lookup_byid(const struct net *net,
 
 #define NFT_RULE_MAXEXPRS	128
 
-static int nf_tables_newrule(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_newrule(struct net *net, struct sock *nlsk,
 			     struct sk_buff *skb, const struct nlmsghdr *nlh,
 			     const struct nlattr * const nla[],
 			     struct netlink_ext_ack *extack)
@@ -3255,6 +3500,9 @@ static int nf_tables_newrule(struct net *net, struct sock *nlsk,
 				      GFP_KERNEL);
 		if (!info)
 			return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+    info = hakc_transfer_to_clique(info, NFT_RULE_MAXEXPRS * sizeof(struct nft_expr_info), __claque_id, __color, false);
+#endif
 
 		nla_for_each_nested(tmp, nla[NFTA_RULE_EXPRESSIONS], rem) {
 			err = -EINVAL;
@@ -3284,6 +3532,10 @@ static int nf_tables_newrule(struct net *net, struct sock *nlsk,
 	rule = kzalloc(sizeof(*rule) + size + usize, GFP_KERNEL);
 	if (rule == NULL)
 		goto err1;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+rule  = hakc_transfer_to_clique(rule, sizeof(*rule) + size + usize,
+                            __claque_id, __color, false);
+#endif
 
 	nft_activate_next(net, rule);
 
@@ -3372,6 +3624,20 @@ err1:
 	kvfree(info);
 	return err;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_newrule, int, struct net *net, struct sock *nlsk,
+			     struct sk_buff *skb, const struct nlmsghdr *nlh,
+			     const struct nlattr * const nla[],
+			     struct netlink_ext_ack *extack)
+{
+  nlh = hakc_transfer_to_clique((void*)nlh, nlh->nlmsg_len, __claque_id, __color, false);
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  nla = hakc_transfer_nla(nla, NFTA_RULE_MAX + 1, __claque_id, __color);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  extack = hakc_transfer_to_clique(extack, sizeof(*extack), __claque_id, __color, false);
+  return nf_tables_newrule(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
 
 static struct nft_rule *nft_rule_lookup_byid(const struct net *net,
 					     const struct nlattr *nla)
@@ -3888,6 +4154,12 @@ static void nf_tables_set_notify(const struct nft_ctx *ctx,
 	skb = nlmsg_new(NLMSG_GOODSIZE, gfp_flags);
 	if (skb == NULL)
 		goto err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb  = hakc_transfer_to_clique(skb, sizeof(*skb),
+                            __claque_id, __color, false);
+skb->data = skb->head  = hakc_transfer_to_clique(skb->data, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_fill_set(skb, ctx, set, event, 0);
 	if (err < 0) {
@@ -3901,7 +4173,7 @@ err:
 	nfnetlink_set_err(ctx->net, portid, NFNLGRP_NFTABLES, -ENOBUFS);
 }
 
-static int nf_tables_dump_sets(struct sk_buff *skb, struct netlink_callback *cb)
+static hakc_noinline int nf_tables_dump_sets(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	const struct nft_set *set;
 	unsigned int idx, s_idx = cb->args[0];
@@ -3960,26 +4232,57 @@ done:
 	return skb->len;
 }
 
-static int nf_tables_dump_sets_start(struct netlink_callback *cb)
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_sets, int, struct sk_buff *skb, struct netlink_callback *cb)
+{
+  skb->sk->sk_net.net = hakc_transfer_to_clique(skb->sk->sk_net.net, sizeof(*skb->sk->sk_net.net), __claque_id, __color, false);
+  skb->sk = hakc_transfer_to_clique(skb->sk, sizeof(*skb->sk), __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_sets(skb, cb); 
+}
+#endif
+
+static hakc_noinline int nf_tables_dump_sets_start(struct netlink_callback *cb)
 {
 	struct nft_ctx *ctx_dump = NULL;
 
 	ctx_dump = kmemdup(cb->data, sizeof(*ctx_dump), GFP_ATOMIC);
 	if (ctx_dump == NULL)
 		return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+ctx_dump  = hakc_transfer_to_clique(ctx_dump, sizeof(*ctx_dump),
+                            __claque_id, __color, false);
+#endif
 
 	cb->data = ctx_dump;
 	return 0;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_sets_start, int, struct netlink_callback *cb)
+{
+  cb->data = hakc_transfer_to_clique(cb->data, sizeof(struct nft_ctx), __claque_id, __color, false);
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_sets_start(cb);
+}
+#endif
 
-static int nf_tables_dump_sets_done(struct netlink_callback *cb)
+static hakc_noinline int nf_tables_dump_sets_done(struct netlink_callback *cb)
 {
 	kfree(cb->data);
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_sets_done, int, struct netlink_callback *cb)
+{
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_sets_done(cb);
+}
+#endif
+
 /* called with rcu_read_lock held */
-static int nf_tables_getset(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_getset(struct net *net, struct sock *nlsk,
 			    struct sk_buff *skb, const struct nlmsghdr *nlh,
 			    const struct nlattr * const nla[],
 			    struct netlink_ext_ack *extack)
@@ -3997,11 +4300,18 @@ static int nf_tables_getset(struct net *net, struct sock *nlsk,
 	if (err < 0)
 		return err;
 
+
 	if (nlh->nlmsg_flags & NLM_F_DUMP) {
 		struct netlink_dump_control c = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+			.start = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_sets_start),
+			.dump = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_sets),
+			.done = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_sets_done),
+#else
 			.start = nf_tables_dump_sets_start,
 			.dump = nf_tables_dump_sets,
 			.done = nf_tables_dump_sets_done,
+#endif
 			.data = &ctx,
 			.module = THIS_MODULE,
 		};
@@ -4037,6 +4347,21 @@ err_fill_set_info:
 static const struct nla_policy nft_concat_policy[NFTA_SET_FIELD_MAX + 1] = {
 	[NFTA_SET_FIELD_LEN]	= { .type = NLA_U32 },
 };
+
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getset, int, struct net *net, struct sock *nlsk,
+			    struct sk_buff *skb, const struct nlmsghdr *nlh,
+			    const struct nlattr * const nla[],
+			    struct netlink_ext_ack *extack)
+{
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  nlh = hakc_transfer_to_clique((void*)nlh, nlh->nlmsg_len, __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  nla = hakc_transfer_nla(nla, NFTA_SET_MAX + 1, __claque_id, __color);
+  return nf_tables_getset(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
 
 static int nft_set_desc_concat_parse(const struct nlattr *attr,
 				     struct nft_set_desc *desc)
@@ -4265,12 +4590,18 @@ static int nf_tables_newset(struct net *net, struct sock *nlsk,
 	set = kvzalloc(sizeof(*set) + size + udlen, GFP_KERNEL);
 	if (!set)
 		return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  set = hakc_transfer_to_clique(set, sizeof(*set) + size + udlen, __claque_id, __color, false);
+#endif
 
 	name = nla_strdup(nla[NFTA_SET_NAME], GFP_KERNEL);
 	if (!name) {
 		err = -ENOMEM;
 		goto err_set_name;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  name = hakc_transfer_string(name, __claque_id, __color);  
+#endif
 
 	err = nf_tables_set_alloc_name(&ctx, set, name);
 	kfree(name);
@@ -4766,8 +5097,14 @@ static int nf_tables_dump_set_start(struct netlink_callback *cb)
 	struct nft_set_dump_ctx *dump_ctx = cb->data;
 
 	cb->data = kmemdup(dump_ctx, sizeof(*dump_ctx), GFP_ATOMIC);
-
-	return cb->data ? 0 : -ENOMEM;
+ if(!cb->data) {
+   return -ENOMEM;
+ }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+cb->data  = hakc_transfer_to_clique(cb->data, sizeof(*dump_ctx),
+                            __claque_id, __color, false);
+#endif
+ return 0;
 }
 
 static int nf_tables_dump_set_done(struct netlink_callback *cb)
@@ -4918,6 +5255,12 @@ static int nft_get_set_elem(struct nft_ctx *ctx, struct nft_set *set,
 	skb = nlmsg_new(NLMSG_GOODSIZE, GFP_ATOMIC);
 	if (skb == NULL)
 		return err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb  = hakc_transfer_to_clique(skb, sizeof(*skb),
+                            __claque_id, __color, false);
+skb->data = skb->head = hakc_transfer_to_clique(skb->data, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_fill_setelem_info(skb, ctx, ctx->seq, ctx->portid,
 					  NFT_MSG_NEWSETELEM, 0, set, &elem);
@@ -5008,6 +5351,12 @@ static void nf_tables_setelem_notify(const struct nft_ctx *ctx,
 	skb = nlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (skb == NULL)
 		goto err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb  = hakc_transfer_to_clique(skb, sizeof(*skb),
+                            __claque_id, __color, false);
+skb->data = skb->head = hakc_transfer_to_clique(skb->data, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_fill_setelem_info(skb, ctx, 0, portid, event, flags,
 					  set, elem);
@@ -5077,6 +5426,10 @@ void *nft_set_elem_init(const struct nft_set *set,
 	elem = kzalloc(set->ops->elemsize + tmpl->len, gfp);
 	if (elem == NULL)
 		return NULL;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+elem  = hakc_transfer_to_clique(elem, set->ops->elemsize + tmpl->len,
+                            __claque_id, __color, false);
+#endif
 
 	ext = nft_set_elem_ext(set, elem);
 	nft_set_ext_init(ext, tmpl);
@@ -5233,6 +5586,10 @@ static int nft_add_set_elem(struct nft_ctx *ctx, struct nft_set *set,
 		expr = kzalloc(set->expr->ops->size, GFP_KERNEL);
 		if (!expr)
 			return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+expr  = hakc_transfer_to_clique(expr, set->expr->ops->size,
+                            __claque_id, __color, false);
+#endif
 
 		err = nft_expr_clone(expr, set->expr);
 		if (err < 0)
@@ -5688,6 +6045,10 @@ struct nft_set_gc_batch *nft_set_gc_batch_alloc(const struct nft_set *set,
 	gcb = kzalloc(sizeof(*gcb), gfp);
 	if (gcb == NULL)
 		return gcb;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+gcb  = hakc_transfer_to_clique(gcb, sizeof(*gcb),
+                            __claque_id, __color, false);
+#endif
 	gcb->head.set = set;
 	return gcb;
 }
@@ -5705,6 +6066,13 @@ struct nft_set_gc_batch *nft_set_gc_batch_alloc(const struct nft_set *set,
  */
 int nft_register_obj(struct nft_object_type *obj_type)
 {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  obj_type = hakc_transfer_to_clique(obj_type, sizeof(*obj_type), __claque_id, __color, false);
+  obj_type->ops = hakc_transfer_to_clique((void*)obj_type->ops, sizeof(*obj_type->ops), __claque_id, __color, false);
+  //obj_type->ops->init = hakc_sign_pointer((void*)obj_type->ops->init, __claque_id, __color, false);
+  //obj_type->ops->eval = hakc_sign_pointer((void*)obj_type->ops->eval, __claque_id, __color, false);
+#endif
+
 	if (obj_type->type == NFT_OBJECT_UNSPEC)
 		return -EINVAL;
 
@@ -5741,15 +6109,16 @@ struct nft_object *nft_obj_lookup(const struct net *net,
 
 	nla_strlcpy(search, nla, sizeof(search));
 	k.name = search;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  k.name = hakc_transfer_string((void*)k.name, __claque_id, __color);
+#endif
 
 	WARN_ON_ONCE(!rcu_read_lock_held() &&
 		     !lockdep_commit_lock_is_held(net));
-
 	rcu_read_lock();
 	list = rhltable_lookup(&nft_objname_ht, &k, nft_objname_ht_params);
 	if (!list)
 		goto out;
-
 	rhl_for_each_entry_rcu(obj, tmp, list, rhlhead) {
 		if (objtype == obj->ops->type->type &&
 		    nft_active_genmask(obj, genmask)) {
@@ -5802,6 +6171,10 @@ static struct nft_object *nft_obj_init(const struct nft_ctx *ctx,
 	tb = kmalloc_array(type->maxattr + 1, sizeof(*tb), GFP_KERNEL);
 	if (!tb)
 		goto err1;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+tb  = hakc_transfer_to_clique(tb, (type->maxattr + 1) * sizeof(*tb),
+                            __claque_id, __color, false);
+#endif
 
 	if (attr) {
 		err = nla_parse_nested_deprecated(tb, type->maxattr, attr,
@@ -5826,6 +6199,10 @@ static struct nft_object *nft_obj_init(const struct nft_ctx *ctx,
 	obj = kzalloc(sizeof(*obj) + ops->size, GFP_KERNEL);
 	if (!obj)
 		goto err2;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+obj  = hakc_transfer_to_clique(obj, sizeof(*obj) + ops->size,
+                            __claque_id, __color, false);
+#endif
 
 	err = ops->init(ctx, (const struct nlattr * const *)tb, obj);
 	if (err < 0)
@@ -5922,7 +6299,7 @@ err_free_trans:
 	return err;
 }
 
-static int nf_tables_newobj(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_newobj(struct net *net, struct sock *nlsk,
 			    struct sk_buff *skb, const struct nlmsghdr *nlh,
 			    const struct nlattr * const nla[],
 			    struct netlink_ext_ack *extack)
@@ -5966,10 +6343,8 @@ static int nf_tables_newobj(struct net *net, struct sock *nlsk,
 
 		type = __nft_obj_type_get(objtype);
 		nft_ctx_init(&ctx, net, skb, nlh, family, table, NULL, nla);
-
 		return nf_tables_updobj(&ctx, type, nla[NFTA_OBJ_DATA], obj);
 	}
-
 	nft_ctx_init(&ctx, net, skb, nlh, family, table, NULL, nla);
 
 	type = nft_obj_type_get(net, objtype);
@@ -5989,12 +6364,18 @@ static int nf_tables_newobj(struct net *net, struct sock *nlsk,
 		err = -ENOMEM;
 		goto err_strdup;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  obj->key.name = hakc_transfer_string((void*)obj->key.name, __claque_id, __color);  
+#endif
 
 	if (nla[NFTA_OBJ_USERDATA]) {
 		obj->udata = nla_memdup(nla[NFTA_OBJ_USERDATA], GFP_KERNEL);
 		if (obj->udata == NULL)
 			goto err_userdata;
-
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+obj->udata  = hakc_transfer_to_clique(obj->udata, nla_len(nla[NFTA_OBJ_USERDATA]),
+                            __claque_id, __color, false);
+#endif
 		obj->udlen = nla_len(nla[NFTA_OBJ_USERDATA]);
 	}
 
@@ -6026,6 +6407,20 @@ err_init:
 	module_put(type->owner);
 	return err;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_newobj, int, struct net *net, struct sock *nlsk,
+			    struct sk_buff *skb, const struct nlmsghdr *nlh,
+			    const struct nlattr * const nla[],
+			    struct netlink_ext_ack *extack)
+{
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  nlh = hakc_transfer_to_clique((void*)nlh, nlh->nlmsg_len, __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  extack = hakc_transfer_to_clique(extack, sizeof(*extack), __claque_id, __color, false);
+  nla = hakc_transfer_nla(nla, NFTA_OBJ_MAX + 1, __claque_id, __color);
+  return nf_tables_newobj(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
 
 static int nf_tables_fill_obj_info(struct sk_buff *skb, struct net *net,
 				   u32 portid, u32 seq, int event, u32 flags,
@@ -6071,7 +6466,7 @@ struct nft_obj_filter {
 	u32		type;
 };
 
-static int nf_tables_dump_obj(struct sk_buff *skb, struct netlink_callback *cb)
+static hakc_noinline int nf_tables_dump_obj(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	const struct nfgenmsg *nfmsg = nlmsg_data(cb->nlh);
 	const struct nft_table *table;
@@ -6141,8 +6536,18 @@ done:
 	cb->args[0] = idx;
 	return skb->len;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_obj, int, struct sk_buff *skb, struct netlink_callback *cb)
+{
+  skb->sk->sk_net.net = hakc_transfer_to_clique(skb->sk->sk_net.net, sizeof(*skb->sk->sk_net.net), __claque_id, __color, false);
+  skb->sk = hakc_transfer_to_clique(skb->sk, sizeof(*skb->sk), __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_obj(skb, cb);
+}
+#endif
 
-static int nf_tables_dump_obj_start(struct netlink_callback *cb)
+static hakc_noinline int nf_tables_dump_obj_start(struct netlink_callback *cb)
 {
 	const struct nlattr * const *nla = cb->data;
 	struct nft_obj_filter *filter = NULL;
@@ -6151,6 +6556,10 @@ static int nf_tables_dump_obj_start(struct netlink_callback *cb)
 		filter = kzalloc(sizeof(*filter), GFP_ATOMIC);
 		if (!filter)
 			return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+filter  = hakc_transfer_to_clique(filter, sizeof(*filter),
+                            __claque_id, __color, false);
+#endif
 
 		if (nla[NFTA_OBJ_TABLE]) {
 			filter->table = nla_strdup(nla[NFTA_OBJ_TABLE], GFP_ATOMIC);
@@ -6158,6 +6567,9 @@ static int nf_tables_dump_obj_start(struct netlink_callback *cb)
 				kfree(filter);
 				return -ENOMEM;
 			}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  filter->table = hakc_transfer_string(filter->table, __claque_id, __color);  
+#endif
 		}
 
 		if (nla[NFTA_OBJ_TYPE])
@@ -6167,8 +6579,15 @@ static int nf_tables_dump_obj_start(struct netlink_callback *cb)
 	cb->data = filter;
 	return 0;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_obj_start, int, struct netlink_callback *cb)
+{
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_obj_start(cb);
+}
+#endif
 
-static int nf_tables_dump_obj_done(struct netlink_callback *cb)
+static hakc_noinline int nf_tables_dump_obj_done(struct netlink_callback *cb)
 {
 	struct nft_obj_filter *filter = cb->data;
 
@@ -6179,9 +6598,16 @@ static int nf_tables_dump_obj_done(struct netlink_callback *cb)
 
 	return 0;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_obj_done, int, struct netlink_callback *cb)
+{
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_obj_done(cb);
+}
+#endif
 
 /* called with rcu_read_lock held */
-static int nf_tables_getobj(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_getobj(struct net *net, struct sock *nlsk,
 			    struct sk_buff *skb, const struct nlmsghdr *nlh,
 			    const struct nlattr * const nla[],
 			    struct netlink_ext_ack *extack)
@@ -6198,9 +6624,15 @@ static int nf_tables_getobj(struct net *net, struct sock *nlsk,
 
 	if (nlh->nlmsg_flags & NLM_F_DUMP) {
 		struct netlink_dump_control c = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+			.start = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_obj_start),
+			.dump = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_obj),
+			.done = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_obj_done),
+#else
 			.start = nf_tables_dump_obj_start,
 			.dump = nf_tables_dump_obj,
 			.done = nf_tables_dump_obj_done,
+#endif
 			.module = THIS_MODULE,
 			.data = (void *)nla,
 		};
@@ -6256,6 +6688,19 @@ err_fill_obj_info:
 	kfree_skb(skb2);
 	return err;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getobj, int, struct net *net, struct sock *nlsk,
+			    struct sk_buff *skb, const struct nlmsghdr *nlh,
+			    const struct nlattr * const nla[],
+			    struct netlink_ext_ack *extack)
+{
+  nlh = hakc_transfer_to_clique((void*)nlh, nlh->nlmsg_len, __claque_id, __color, false);
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  nla = hakc_transfer_nla(nla, NFTA_OBJ_MAX + 1, __claque_id, __color);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  return nf_tables_getobj(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
 
 static void nft_obj_destroy(const struct nft_ctx *ctx, struct nft_object *obj)
 {
@@ -6340,6 +6785,12 @@ void nft_obj_notify(struct net *net, const struct nft_table *table,
 	skb = nlmsg_new(NLMSG_GOODSIZE, gfp);
 	if (skb == NULL)
 		goto err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb  = hakc_transfer_to_clique(skb, sizeof(*skb),
+                            __claque_id, __color, false);
+skb->data = skb->head = hakc_transfer_to_clique(skb->data, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_fill_obj_info(skb, net, portid, seq, event, 0, family,
 				      table, obj, false);
@@ -6733,6 +7184,10 @@ static int nf_tables_newflowtable(struct net *net, struct sock *nlsk,
 	flowtable = kzalloc(sizeof(*flowtable), GFP_KERNEL);
 	if (!flowtable)
 		return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+flowtable  = hakc_transfer_to_clique(flowtable, sizeof(*flowtable),
+                            __claque_id, __color, false);
+#endif
 
 	flowtable->table = table;
 	flowtable->handle = nf_tables_alloc_handle(table);
@@ -6743,6 +7198,9 @@ static int nf_tables_newflowtable(struct net *net, struct sock *nlsk,
 		err = -ENOMEM;
 		goto err1;
 	}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  flowtable->name = hakc_transfer_string(flowtable->name, __claque_id, __color);  
+#endif
 
 	type = nft_flowtable_type_get(net, family);
 	if (IS_ERR(type)) {
@@ -6978,7 +7436,7 @@ struct nft_flowtable_filter {
 	char		*table;
 };
 
-static int nf_tables_dump_flowtable(struct sk_buff *skb,
+static hakc_noinline int nf_tables_dump_flowtable(struct sk_buff *skb,
 				    struct netlink_callback *cb)
 {
 	const struct nfgenmsg *nfmsg = nlmsg_data(cb->nlh);
@@ -7028,8 +7486,19 @@ done:
 	cb->args[0] = idx;
 	return skb->len;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_flowtable, int, struct sk_buff *skb,
+				    struct netlink_callback *cb)
+{
+  skb->sk->sk_net.net = hakc_transfer_to_clique(skb->sk->sk_net.net, sizeof(*skb->sk->sk_net.net), __claque_id, __color, false);
+  skb->sk = hakc_transfer_to_clique(skb->sk, sizeof(*skb->sk), __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_flowtable(skb, cb);
+}
+#endif
 
-static int nf_tables_dump_flowtable_start(struct netlink_callback *cb)
+static hakc_noinline int nf_tables_dump_flowtable_start(struct netlink_callback *cb)
 {
 	const struct nlattr * const *nla = cb->data;
 	struct nft_flowtable_filter *filter = NULL;
@@ -7038,6 +7507,10 @@ static int nf_tables_dump_flowtable_start(struct netlink_callback *cb)
 		filter = kzalloc(sizeof(*filter), GFP_ATOMIC);
 		if (!filter)
 			return -ENOMEM;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+filter  = hakc_transfer_to_clique(filter, sizeof(*filter),
+                            __claque_id, __color, false);
+#endif
 
 		filter->table = nla_strdup(nla[NFTA_FLOWTABLE_TABLE],
 					   GFP_ATOMIC);
@@ -7045,13 +7518,24 @@ static int nf_tables_dump_flowtable_start(struct netlink_callback *cb)
 			kfree(filter);
 			return -ENOMEM;
 		}
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  filter->table = hakc_transfer_string(filter->table, __claque_id, __color);  
+#endif
 	}
 
 	cb->data = filter;
 	return 0;
 }
 
-static int nf_tables_dump_flowtable_done(struct netlink_callback *cb)
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_flowtable_start, int, struct netlink_callback *cb)
+{
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_flowtable_start(cb);
+}
+#endif
+
+static hakc_noinline int nf_tables_dump_flowtable_done(struct netlink_callback *cb)
 {
 	struct nft_flowtable_filter *filter = cb->data;
 
@@ -7064,8 +7548,16 @@ static int nf_tables_dump_flowtable_done(struct netlink_callback *cb)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_flowtable_done, int, struct netlink_callback *cb)
+{
+  cb = hakc_transfer_to_clique(cb, sizeof(*cb), __claque_id, __color, false);
+  return nf_tables_dump_flowtable_done(cb);
+}
+#endif
+
 /* called with rcu_read_lock held */
-static int nf_tables_getflowtable(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_getflowtable(struct net *net, struct sock *nlsk,
 				  struct sk_buff *skb,
 				  const struct nlmsghdr *nlh,
 				  const struct nlattr * const nla[],
@@ -7081,9 +7573,15 @@ static int nf_tables_getflowtable(struct net *net, struct sock *nlsk,
 
 	if (nlh->nlmsg_flags & NLM_F_DUMP) {
 		struct netlink_dump_control c = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+			.start = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_flowtable_start),
+			.dump = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_flowtable),
+			.done = HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_dump_flowtable_done),
+#else
 			.start = nf_tables_dump_flowtable_start,
 			.dump = nf_tables_dump_flowtable,
 			.done = nf_tables_dump_flowtable_done,
+#endif
 			.module = THIS_MODULE,
 			.data = (void *)nla,
 		};
@@ -7121,6 +7619,20 @@ err_fill_flowtable_info:
 	kfree_skb(skb2);
 	return err;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getflowtable, int, struct net *net, struct sock *nlsk,
+				  struct sk_buff *skb,
+				  const struct nlmsghdr *nlh,
+				  const struct nlattr * const nla[],
+				  struct netlink_ext_ack *extack)
+{
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  nlh = hakc_transfer_to_clique((void*)nlh, nlh->nlmsg_len, __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  nla = hakc_transfer_nla(nla, NFTA_FLOWTABLE_MAX + 1, __claque_id, __color);
+  return nf_tables_getflowtable(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
 
 static void nf_tables_flowtable_notify(struct nft_ctx *ctx,
 				       struct nft_flowtable *flowtable,
@@ -7149,6 +7661,12 @@ static void nf_tables_flowtable_notify(struct nft_ctx *ctx,
 	skb = nlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (skb == NULL)
 		goto err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb  = hakc_transfer_to_clique(skb, sizeof(*skb),
+                            __claque_id, __color, false);
+skb->data = skb->head = hakc_transfer_to_clique(skb->data, skb->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_fill_flowtable_info(skb, ctx->net, ctx->portid,
 					    ctx->seq, event, 0,
@@ -7187,6 +7705,9 @@ static int nf_tables_fill_gen_info(struct sk_buff *skb, struct net *net,
 	struct nfgenmsg *nfmsg;
 	char buf[TASK_COMM_LEN];
 	int event = nfnl_msg_type(NFNL_SUBSYS_NFTABLES, NFT_MSG_NEWGEN);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  struct task_struct *current_task;
+#endif
 
 	nlh = nlmsg_put(skb, portid, seq, event, sizeof(struct nfgenmsg), 0);
 	if (nlh == NULL)
@@ -7196,9 +7717,15 @@ static int nf_tables_fill_gen_info(struct sk_buff *skb, struct net *net,
 	nfmsg->nfgen_family	= AF_UNSPEC;
 	nfmsg->version		= NFNETLINK_V0;
 	nfmsg->res_id		= htons(net->nft.base_seq & 0xffff);
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  current_task = hakc_transfer_to_clique(current, sizeof(*current),
+                                                            __claque_id, __color, false);
+#else
+  struct task_struct *current_task = current;
+#endif
 
 	if (nla_put_be32(skb, NFTA_GEN_ID, htonl(net->nft.base_seq)) ||
-	    nla_put_be32(skb, NFTA_GEN_PROC_PID, htonl(task_pid_nr(current))) ||
+	    nla_put_be32(skb, NFTA_GEN_PROC_PID, htonl(task_pid_nr(current_task))) ||
 	    nla_put_string(skb, NFTA_GEN_PROC_NAME, get_task_comm(buf, current)))
 		goto nla_put_failure;
 
@@ -7227,7 +7754,7 @@ static void nft_flowtable_event(unsigned long event, struct net_device *dev,
 	}
 }
 
-static int nf_tables_flowtable_event(struct notifier_block *this,
+static hakc_noinline int nf_tables_flowtable_event(struct notifier_block *this,
 				     unsigned long event, void *ptr)
 {
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
@@ -7250,8 +7777,25 @@ static int nf_tables_flowtable_event(struct notifier_block *this,
 	return NOTIFY_DONE;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_flowtable_event, int, struct notifier_block *this,
+				     unsigned long event, void *ptr)
+{
+	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+  struct net *net = dev_net(hakc_safe_ptr(dev));
+  struct netdev_notifier_info *info = ptr;
+  dev_net_set(hakc_safe_ptr(dev), hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false));
+  info->dev = hakc_transfer_to_clique(dev, sizeof(*dev), __claque_id, __color, false);
+  info = hakc_transfer_to_clique(info, sizeof(*info), __claque_id, __color, false);
+  return nf_tables_flowtable_event(this, event, info);
+}
+#endif
 static struct notifier_block nf_tables_flowtable_notifier = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+	.notifier_call	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_flowtable_event),
+#else
 	.notifier_call	= nf_tables_flowtable_event,
+#endif
 };
 
 static void nf_tables_gen_notify(struct net *net, struct sk_buff *skb,
@@ -7271,6 +7815,12 @@ static void nf_tables_gen_notify(struct net *net, struct sk_buff *skb,
 	skb2 = nlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (skb2 == NULL)
 		goto err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+skb2  = hakc_transfer_to_clique(skb2, sizeof(*skb2),
+                            __claque_id, __color, false);
+skb2->data = skb2->head = hakc_transfer_to_clique(skb2->data, skb2->truesize - SKB_DATA_ALIGN(sizeof(struct sk_buff)),
+                            __claque_id, __color, false);
+#endif
 
 	err = nf_tables_fill_gen_info(skb2, net, NETLINK_CB(skb).portid,
 				      nlh->nlmsg_seq);
@@ -7287,7 +7837,7 @@ err:
 			  -ENOBUFS);
 }
 
-static int nf_tables_getgen(struct net *net, struct sock *nlsk,
+static hakc_noinline int nf_tables_getgen(struct net *net, struct sock *nlsk,
 			    struct sk_buff *skb, const struct nlmsghdr *nlh,
 			    const struct nlattr * const nla[],
 			    struct netlink_ext_ack *extack)
@@ -7298,7 +7848,9 @@ static int nf_tables_getgen(struct net *net, struct sock *nlsk,
 	skb2 = alloc_skb(NLMSG_GOODSIZE, GFP_ATOMIC);
 	if (skb2 == NULL)
 		return -ENOMEM;
-
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  skb2 = hakc_transfer_skb(skb2, __claque_id, __color);
+#endif
 	err = nf_tables_fill_gen_info(skb2, net, NETLINK_CB(skb).portid,
 				      nlh->nlmsg_seq);
 	if (err < 0)
@@ -7311,14 +7863,35 @@ err_fill_gen_info:
 	return err;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getgen, int, struct net *net, struct sock *nlsk,
+			    struct sk_buff *skb, const struct nlmsghdr *nlh,
+			    const struct nlattr * const nla[],
+			    struct netlink_ext_ack *extack)
+{
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  nlh = hakc_transfer_to_clique((void *)nlh, sizeof(*nlh), __claque_id, __color, false);
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+ return nf_tables_getgen(net, nlsk, skb, nlh, nla, extack);
+}
+#endif
+
 static const struct nfnl_callback nf_tables_cb[NFT_MSG_MAX] = {
 	[NFT_MSG_NEWTABLE] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_batch	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_newtable),
+#else
 		.call_batch	= nf_tables_newtable,
+#endif
 		.attr_count	= NFTA_TABLE_MAX,
 		.policy		= nft_table_policy,
 	},
 	[NFT_MSG_GETTABLE] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_rcu	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_gettable),
+#else
 		.call_rcu	= nf_tables_gettable,
+#endif
 		.attr_count	= NFTA_TABLE_MAX,
 		.policy		= nft_table_policy,
 	},
@@ -7328,12 +7901,21 @@ static const struct nfnl_callback nf_tables_cb[NFT_MSG_MAX] = {
 		.policy		= nft_table_policy,
 	},
 	[NFT_MSG_NEWCHAIN] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_batch	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_newchain),
+		//.call_batch	= test_nf_tables_newchain,
+#else
 		.call_batch	= nf_tables_newchain,
+#endif
 		.attr_count	= NFTA_CHAIN_MAX,
 		.policy		= nft_chain_policy,
 	},
 	[NFT_MSG_GETCHAIN] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_rcu	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getchain),
+#else
 		.call_rcu	= nf_tables_getchain,
+#endif
 		.attr_count	= NFTA_CHAIN_MAX,
 		.policy		= nft_chain_policy,
 	},
@@ -7343,7 +7925,11 @@ static const struct nfnl_callback nf_tables_cb[NFT_MSG_MAX] = {
 		.policy		= nft_chain_policy,
 	},
 	[NFT_MSG_NEWRULE] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_batch	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_newrule),
+#else
 		.call_batch	= nf_tables_newrule,
+#endif
 		.attr_count	= NFTA_RULE_MAX,
 		.policy		= nft_rule_policy,
 	},
@@ -7363,7 +7949,11 @@ static const struct nfnl_callback nf_tables_cb[NFT_MSG_MAX] = {
 		.policy		= nft_set_policy,
 	},
 	[NFT_MSG_GETSET] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_rcu	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getset),
+#else
 		.call_rcu	= nf_tables_getset,
+#endif
 		.attr_count	= NFTA_SET_MAX,
 		.policy		= nft_set_policy,
 	},
@@ -7388,15 +7978,27 @@ static const struct nfnl_callback nf_tables_cb[NFT_MSG_MAX] = {
 		.policy		= nft_set_elem_list_policy,
 	},
 	[NFT_MSG_GETGEN] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_rcu	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getgen),
+#else
 		.call_rcu	= nf_tables_getgen,
+#endif
 	},
 	[NFT_MSG_NEWOBJ] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_batch	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_newobj),
+#else
 		.call_batch	= nf_tables_newobj,
+#endif
 		.attr_count	= NFTA_OBJ_MAX,
 		.policy		= nft_obj_policy,
 	},
 	[NFT_MSG_GETOBJ] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_rcu	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getobj),
+#else
 		.call_rcu	= nf_tables_getobj,
+#endif
 		.attr_count	= NFTA_OBJ_MAX,
 		.policy		= nft_obj_policy,
 	},
@@ -7416,7 +8018,11 @@ static const struct nfnl_callback nf_tables_cb[NFT_MSG_MAX] = {
 		.policy		= nft_flowtable_policy,
 	},
 	[NFT_MSG_GETFLOWTABLE] = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+		.call_rcu	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_getflowtable),
+#else
 		.call_rcu	= nf_tables_getflowtable,
+#endif
 		.attr_count	= NFTA_FLOWTABLE_MAX,
 		.policy		= nft_flowtable_policy,
 	},
@@ -7472,7 +8078,6 @@ static void nft_chain_commit_drop_policy(struct nft_trans *trans)
 static void nft_chain_commit_update(struct nft_trans *trans)
 {
 	struct nft_base_chain *basechain;
-
 	if (nft_trans_chain_name(trans)) {
 		rhltable_remove(&trans->ctx.table->chains_ht,
 				&trans->ctx.chain->rhlhead,
@@ -7802,14 +8407,13 @@ new_batch:
 	WARN_ON_ONCE(!list_empty(&net->nft.notify_list));
 }
 
-static int nf_tables_commit(struct net *net, struct sk_buff *skb)
+static hakc_noinline int nf_tables_commit(struct net *net, struct sk_buff *skb)
 {
 	struct nft_trans *trans, *next;
 	struct nft_trans_elem *te;
 	struct nft_chain *chain;
 	struct nft_table *table;
 	int err;
-
 	if (list_empty(&net->nft.commit_list)) {
 		mutex_unlock(&net->nft.commit_mutex);
 		return 0;
@@ -8011,11 +8615,23 @@ static int nf_tables_commit(struct net *net, struct sk_buff *skb)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_commit, int, struct net *net, struct sk_buff *skb)
+{
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  return nf_tables_commit(net, skb);
+}
+#endif
+
 static void nf_tables_module_autoload(struct net *net)
 {
 	struct nft_module_request *req, *next;
 	LIST_HEAD(module_list);
-
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  module_list.next = hakc_sign_pointer_with_color(module_list.next, __claque_id, false);
+  module_list.prev = hakc_sign_pointer_with_color(module_list.prev, __claque_id, false);
+#endif
 	list_splice_init(&net->nft.module_list, &module_list);
 	mutex_unlock(&net->nft.commit_mutex);
 	list_for_each_entry_safe(req, next, &module_list, list) {
@@ -8067,7 +8683,6 @@ static int __nf_tables_abort(struct net *net, enum nfnl_abort_action action)
 	if (action == NFNL_ABORT_VALIDATE &&
 	    nf_tables_validate(net) < 0)
 		return -EAGAIN;
-
 	list_for_each_entry_safe_reverse(trans, next, &net->nft.commit_list,
 					 list) {
 		switch (trans->msg_type) {
@@ -8207,12 +8822,20 @@ static int __nf_tables_abort(struct net *net, enum nfnl_abort_action action)
 	return 0;
 }
 
-static void nf_tables_cleanup(struct net *net)
+static hakc_noinline void nf_tables_cleanup(struct net *net)
 {
 	nft_validate_state_update(net, NFT_VALIDATE_SKIP);
 }
 
-static int nf_tables_abort(struct net *net, struct sk_buff *skb,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_cleanup, void, struct net *net)
+{
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  nf_tables_cleanup(net);
+}
+#endif
+
+static hakc_noinline int nf_tables_abort(struct net *net, struct sk_buff *skb,
 			   enum nfnl_abort_action action)
 {
 	int ret = __nf_tables_abort(net, action);
@@ -8221,6 +8844,15 @@ static int nf_tables_abort(struct net *net, struct sk_buff *skb,
 
 	return ret;
 }
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_abort, int, struct net *net, struct sk_buff *skb,
+			   enum nfnl_abort_action action)
+{
+  net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+  skb = hakc_transfer_skb(skb, __claque_id, __color);
+  return nf_tables_abort(net, skb, action);
+}
+#endif
 
 static bool nf_tables_valid_genid(struct net *net, u32 genid)
 {
@@ -8241,9 +8873,21 @@ static const struct nfnetlink_subsystem nf_tables_subsys = {
 	.subsys_id	= NFNL_SUBSYS_NFTABLES,
 	.cb_count	= NFT_MSG_MAX,
 	.cb		= nf_tables_cb,
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+	.commit		= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_commit),
+#else
 	.commit		= nf_tables_commit,
+#endif
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+	.abort		= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_abort),
+#else
 	.abort		= nf_tables_abort,
+#endif
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+	.cleanup	= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_cleanup),
+#else
 	.cleanup	= nf_tables_cleanup,
+#endif
 	.valid_genid	= nf_tables_valid_genid,
 	.owner		= THIS_MODULE,
 };
@@ -8836,7 +9480,7 @@ static void __nft_release_tables(struct net *net)
 	}
 }
 
-static int __net_init nf_tables_init_net(struct net *net)
+static hakc_noinline int __net_init nf_tables_init_net(struct net *net)
 {
 	INIT_LIST_HEAD(&net->nft.tables);
 	INIT_LIST_HEAD(&net->nft.commit_list);
@@ -8848,6 +9492,14 @@ static int __net_init nf_tables_init_net(struct net *net)
 
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+DEFINE_HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_init_net, int, struct net *net)
+{
+    net = hakc_transfer_to_clique(net, sizeof(*net), __claque_id, __color, false);
+    return nf_tables_init_net(net);
+}
+#endif
 
 static void __net_exit nf_tables_pre_exit_net(struct net *net)
 {
@@ -8867,7 +9519,11 @@ static void __net_exit nf_tables_exit_net(struct net *net)
 }
 
 static struct pernet_operations nf_tables_net_ops = {
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+	.init		= HAKC_OUTSIDE_TRANSFER_FUNC(nf_tables_init_net),
+#else
 	.init		= nf_tables_init_net,
+#endif
 	.pre_exit	= nf_tables_pre_exit_net,
 	.exit		= nf_tables_exit_net,
 };
@@ -8875,6 +9531,17 @@ static struct pernet_operations nf_tables_net_ops = {
 static int __init nf_tables_module_init(void)
 {
 	int err;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  nft_chain_ht_params.hashfn = hakc_sign_pointer_with_color(nft_chain_ht_params.hashfn,  __claque_id,  true);
+  nft_chain_ht_params.obj_hashfn = hakc_sign_pointer_with_color(nft_chain_ht_params.obj_hashfn,  __claque_id,  true);
+  nft_chain_ht_params.obj_cmpfn = hakc_sign_pointer_with_color(nft_chain_ht_params.obj_cmpfn,  __claque_id,  true);
+
+  nft_objname_ht_params.hashfn = hakc_sign_pointer_with_color(nft_objname_ht_params.hashfn,  __claque_id,  true);
+  nft_objname_ht_params.obj_hashfn = hakc_sign_pointer_with_color(nft_objname_ht_params.obj_hashfn,  __claque_id,  true);
+  nft_objname_ht_params.obj_cmpfn = hakc_sign_pointer_with_color(nft_objname_ht_params.obj_cmpfn,  __claque_id,  true);
+  nf_tables_objects.next = hakc_sign_pointer_with_color(nf_tables_objects.next, __claque_id, true);
+  nf_tables_objects.prev = hakc_sign_pointer_with_color(nf_tables_objects.prev, __claque_id, true);
+#endif
 
 	spin_lock_init(&nf_tables_destroy_list_lock);
 	err = register_pernet_subsys(&nf_tables_net_ops);
@@ -8896,6 +9563,9 @@ static int __init nf_tables_module_init(void)
 	err = rhltable_init(&nft_objname_ht, &nft_objname_ht_params);
 	if (err < 0)
 		goto err4;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
+  nft_objname_ht.ht.tbl = hakc_sign_pointer_with_color(nft_objname_ht.ht.tbl, __claque_id, false);
+#endif
 
 	err = nft_offload_init();
 	if (err < 0)

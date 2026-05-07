@@ -40,8 +40,13 @@
 
 #include <net/checksum.h>
 
-#define IN6_ADDR_HSIZE_SHIFT	8
-#define IN6_ADDR_HSIZE		BIT(IN6_ADDR_HSIZE_SHIFT)
+#include <linux/hakc.h>
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+HAKC_MODULE_CLAQUE(2, RED_CLIQUE, HAKC_MASK_COLOR(SILVER_CLIQUE) | HAKC_MASK_COLOR(GREEN_CLIQUE));
+#endif
+
+#define IN6_ADDR_HSIZE_SHIFT 8
+#define IN6_ADDR_HSIZE BIT(IN6_ADDR_HSIZE_SHIFT)
 /*	anycast address hash table
  */
 static struct hlist_head inet6_acaddr_lst[IN6_ADDR_HSIZE];
@@ -265,6 +270,10 @@ static struct ifacaddr6 *aca_alloc(struct fib6_info *f6i,
 	aca = kzalloc(sizeof(*aca), GFP_ATOMIC);
 	if (!aca)
 		return NULL;
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART_IPV6)
+    aca = hakc_transfer_to_clique(aca, sizeof(*aca), __claque_id, __color,
+                                 false);
+#endif
 
 	aca->aca_addr = *addr;
 	fib6_info_hold(f6i);

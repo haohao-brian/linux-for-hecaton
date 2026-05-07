@@ -14,6 +14,7 @@
 #include <asm/kernel-pgtable.h>
 #include <asm/memory.h>
 #include <asm/page.h>
+#include <asm/mte-def.h>
 
 #include "image.h"
 
@@ -135,6 +136,7 @@ SECTIONS
 			IDMAP_TEXT
 			HIBERNATE_TEXT
 			TRAMP_TEXT
+			HAKC_TEXT
 			*(.fixup)
 			*(.gnu.warning)
 		. = ALIGN(16);
