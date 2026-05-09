@@ -2581,6 +2581,24 @@ static inline void dev_lstats_add(struct net_device *dev, unsigned int len)
 	pcpu_stats;							\
 })
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+#define hakc_netdev_alloc_pcpu_stats(type, claque_id, color)				\
+({									\
+	typeof(type) __percpu *pcpu_stats = alloc_percpu_gfp(type, GFP_KERNEL);\
+	if (pcpu_stats)	{						\
+		int __cpu;                                                    \
+		pcpu_stats = hakc_transfer_percpu_to_clique(pcpu_stats, sizeof \
+								   (type),  __claque_id, __color);\
+		for_each_possible_cpu(__cpu) {				\
+			typeof(type) *stat;				\
+			stat = per_cpu_ptr(pcpu_stats, __cpu);		\
+			u64_stats_init(&stat->syncp);			\
+		}							\
+	}								\
+	pcpu_stats;							\
+})
+#endif
+
 #define netdev_alloc_pcpu_stats(type)					\
 	__netdev_alloc_pcpu_stats(type, GFP_KERNEL)
 
