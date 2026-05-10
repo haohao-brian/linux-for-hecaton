@@ -858,7 +858,7 @@ static int nft_secmark_obj_init(const struct nft_ctx *ctx,
 	if (!priv->ctx)
 		return -ENOMEM;
 #if IS_ENABLED(CONFIG_PAC_MTE_COMPART_NF_TABLES)
-  priv->ctx = HAKC_TRANSFER_string(priv->ctx, __claque_id, __color);  
+  priv->ctx = hakc_transfer_string(priv->ctx, __claque_id, __color);  
 #endif
 
 	err = nft_secmark_compute_secid(priv);

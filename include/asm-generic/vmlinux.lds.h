@@ -54,6 +54,10 @@
 #define LOAD_OFFSET 0
 #endif
 
+#ifndef MTE_GRANULE_SIZE
+#define MTE_GRANULE_SIZE UL(16)
+#endif
+
 /*
  * Only some architectures want to have the .notes segment visible in
  * a separate PT_NOTE ELF Program Header. When this happens, it needs
@@ -334,7 +338,8 @@
 	MEM_KEEP(exit.data*)						\
 	*(.data.unlikely)						\
 	__start_once = .;						\
-	*(.data.once)							\
+	*(.data.once)          \
+    	DATA_ONCE_HAKC                    \
 	__end_once = .;							\
 	STRUCT_ALIGN();							\
 	*(__tracepoints)						\
@@ -364,9 +369,61 @@
 	*(.data..page_aligned)						\
 	. = ALIGN(page_align);
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+#define READ_MOSTLY_DATA_HAKC					\
+    . = ALIGN(MTE_GRANULE_SIZE);                                 \
+    *(.data..read_mostly..data.hakc*)        \
+    . = ALIGN(MTE_GRANULE_SIZE);
+
+#define HAKC_TEXT                    \
+    . = ALIGN(MTE_GRANULE_SIZE);        \
+    __entry_hakc_text_start = .;     \
+    *(.text.hakc.*)                 \
+    . = ALIGN(MTE_GRANULE_SIZE);        \
+    __entry_hakc_text_end = .;
+
+#define HAKC_DATA \
+    . = ALIGN(MTE_GRANULE_SIZE); \
+    *(.data.hakc.*)               \
+    . = ALIGN(MTE_GRANULE_SIZE);
+
+#define RO_AFTER_INIT_HAKC_DATA \
+        . = ALIGN(MTE_GRANULE_SIZE);                    \
+        __entry_hakc_ro_data_start = .;                  \
+        *(.data..ro_after_init..data.hakc.*)             \
+        . = ALIGN(MTE_GRANULE_SIZE);                    \
+        __entry_hakc_ro_data_end = .;
+
+#define DATA_ONCE_HAKC \
+    . = ALIGN(MTE_GRANULE_SIZE); \
+    *(.data.once..data.hakc.*)    \
+    . = ALIGN(MTE_GRANULE_SIZE);
+
+#define PERCPU_DATA_HAKC \
+    . = ALIGN(MTE_GRANULE_SIZE);    \
+    *(.data..percpu..data.hakc.*)    \
+    . = ALIGN(MTE_GRANULE_SIZE);
+
+#define PARAM_HAKC \
+    *(__param..data.hakc.*)
+//    . = ALIGN(MTE_GRANULE_SIZE); \
+//    *(__param..data.hakc.*)
+//    . = ALIGN(MTE_GRANULE_SIZE);
+
+#else
+#define HAKC_TEXT
+#define RO_AFTER_INIT_HAKC_DATA
+#define HAKC_DATA
+#define DATA_ONCE_HAKC
+#define PERCPU_DATA_HAKC
+#define PARAM_HAKC
+#define READ_MOSTLY_DATA_HAKC
+#endif
+
 #define READ_MOSTLY_DATA(align)						\
 	. = ALIGN(align);						\
-	*(.data..read_mostly)						\
+	*(.data..read_mostly)               \
+    	READ_MOSTLY_DATA_HAKC                                 \
 	. = ALIGN(align);
 
 #define CACHELINE_ALIGNED_DATA(align)					\
@@ -403,7 +460,8 @@
 #define RO_AFTER_INIT_DATA						\
 	. = ALIGN(8);							\
 	__start_ro_after_init = .;					\
-	*(.data..ro_after_init)						\
+	*(.data..ro_after_init)        \
+    	RO_AFTER_INIT_HAKC_DATA                         \
 	JUMP_TABLE_DATA							\
 	STATIC_CALL_DATA						\
 	__end_ro_after_init = .;
@@ -552,7 +610,8 @@
 	/* Built-in module parameters. */				\
 	__param : AT(ADDR(__param) - LOAD_OFFSET) {			\
 		__start___param = .;					\
-		KEEP(*(__param))					\
+		KEEP(*(__param))           \
+        	PARAM_HAKC                     \
 		__stop___param = .;					\
 	}								\
 									\
@@ -1045,9 +1104,10 @@
 	. = ALIGN(cacheline);						\
 	*(.data..percpu..read_mostly)					\
 	. = ALIGN(cacheline);						\
-	*(.data..percpu)						\
+	*(.data..percpu)                    \
 	*(.data..percpu..shared_aligned)				\
-	PERCPU_DECRYPTED_SECTION					\
+	PERCPU_DECRYPTED_SECTION            \
+    	PERCPU_DATA_HAKC                                 \
 	__per_cpu_end = .;
 
 /**
@@ -1127,7 +1187,8 @@
 		PAGE_ALIGNED_DATA(pagealigned)				\
 		CACHELINE_ALIGNED_DATA(cacheline)			\
 		READ_MOSTLY_DATA(cacheline)				\
-		DATA_DATA						\
+		DATA_DATA                                         \
+		HAKC_DATA            \
 		CONSTRUCTORS						\
 	}								\
 	BUG_TABLE							\
