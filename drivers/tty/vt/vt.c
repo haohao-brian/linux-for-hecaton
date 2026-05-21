@@ -4735,7 +4735,7 @@ int con_font_op(struct vc_data *vc, struct console_font_op *op)
 	case KD_FONT_OP_COPY:
 		/* was buggy and never really used */
 		//return -EINVAL;
-        return con_font_copy(vc, op);
+	        return con_font_copy(vc, op);
 	}
 	return -ENOSYS;
 }

@@ -91,16 +91,24 @@ fi
 
 
 
-qemu-system-aarch64 -nographic -machine virt,mte=on,gic-version=3,virtualization=on -m ${MEMSIZE} -cpu cortex-a710,pauth=on -smp ${SMP} \
-        -kernel ${KERNEL} ${DTB} \
-        -drive if=none,file=$FS,id=vda,cache=none,format=raw \
-        -device virtio-blk-pci,drive=vda \
-        -device virtio-gpu-pci \
-        -device virtio-keyboard-pci \
-        -serial mon:stdio \
-        -display vnc=:2 \
-        -append "console=tty0 console=ttyAMA0 root=/dev/vda rw $CMDLINE $BUG_REPRO_CMDLINE" \
-        -netdev user,id=net0,ipv6=on,ipv6-net=fdf2:5e8e:743d::0/43 \
-        -device virtio-net-pci,netdev=net0 \
-        -netdev user,id=net1,hostfwd=tcp::2221-:22 \
-        -device virtio-net-pci,netdev=net1,mac=de:ad:be:ef:41:49
+  qemu-system-aarch64 \
+    -nographic \
+    -machine virt,mte=on,gic-version=3,virtualization=on \
+    -m 4096 \
+    -cpu cortex-a710,pauth=on \
+    -smp 4 \
+    -kernel arch/arm64/boot/Image \
+    -drive if=none,file=/home/dlice/Hecaton/images/make-image-output.img,id=vda,cache=none,format=raw \
+    -device virtio-blk-pci,drive=vda \
+    -device virtio-gpu-pci \
+    -device virtio-keyboard-pci \
+    -fsdev local,id=fsbug,path=/home/dlice/Hecaton/bugs,security_model=passthrough \
+    -device virtio-9p-pci,fsdev=fsbug,mount_tag=bugs \
+    -display vnc=:2 \
+    -append "console=tty0 console=ttyAMA0 root=/dev/vda rw earlycon=pl011,0x09000000 oops=panic panic_on_warn=1 panic=-1 
+  init=/bin/bash" \
+    -netdev user,id=net0,ipv6=on,ipv6-net=fdf2:5e8e:743d::0/43 \
+    -device virtio-net-pci,netdev=net0 \
+    -netdev user,id=net1,hostfwd=tcp::2221-:22 \
+    -device virtio-net-pci,netdev=net1,mac=de:ad:be:ef:41:49 \
+    -serial pty

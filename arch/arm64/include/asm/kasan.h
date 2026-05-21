@@ -8,9 +8,22 @@
 #include <asm/memory.h>
 #include <asm/pgtable-types.h>
 
+/*
+ * With HAKC (CONFIG_PAC_MTE_COMPART), __tag_get returns the real top byte of
+ * an address, but KASAN_GENERIC expects arch_kasan_get_tag to return 0 (no
+ * tagging). Force the KASAN tag helpers to be no-ops when GENERIC is on, so
+ * kasan_unpoison_shadow does not write the kernel-VA top byte (0xff) into
+ * shadow and falsely mark every fresh allocation as freed.
+ */
+#if defined(CONFIG_KASAN_GENERIC) && !defined(CONFIG_KASAN_SW_TAGS)
+#define arch_kasan_set_tag(addr, tag)	((void *)(addr))
+#define arch_kasan_reset_tag(addr)	((void *)(addr))
+#define arch_kasan_get_tag(addr)	0
+#else
 #define arch_kasan_set_tag(addr, tag)	__tag_set(addr, tag)
 #define arch_kasan_reset_tag(addr)	__tag_reset(addr)
 #define arch_kasan_get_tag(addr)	__tag_get(addr)
+#endif
 
 #ifdef CONFIG_KASAN
 

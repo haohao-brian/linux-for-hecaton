@@ -168,10 +168,13 @@ void hakc_init_tags(void)
 	isb();
 }
 
+static bool is_readonly(unsigned long addr);
+
 void hakc_color_address(const void *addr_to_color, clique_color_t color,
 			size_t size)
 {
 	void *ptr;
+	unsigned long cur, end, page_end, chunk_end;
 	if (!VALID_COLOR(color)) {
 		color = INVALID_CLIQUE;
 	}
@@ -186,7 +189,25 @@ void hakc_color_address(const void *addr_to_color, clique_color_t color,
 	}
 	HAKC_INFO("Coloring %u bytes at 0x%lx %s (%d)\n", size, ptr,
 		  get_hakc_color_name(color), color);
-	mte_set_mem_tag_range(ptr, size, (u8)color);
+
+	/*
+	 * Walk page-by-page and skip R/O pages. color_and_sign() only
+	 * checks is_readonly() on the range start; a multi-page transfer
+	 * (e.g. skb->head with oversized truesize) can cross into a R/O
+	 * page and panic inside mte_set_mem_tag_range.
+	 */
+	cur = (unsigned long)ptr;
+	end = cur + size;
+	while (cur < end) {
+		page_end = (cur & PAGE_MASK) + PAGE_SIZE;
+		chunk_end = end < page_end ? end : page_end;
+		if (!is_readonly(cur)) {
+			mte_set_mem_tag_range((void *)cur,
+					      chunk_end - cur, (u8)color);
+		}
+		cur = chunk_end;
+	}
+
 	HAKC_INFO("%lx is colored %s (%s)\n", addr_to_color,
 		  get_hakc_color_name(get_hakc_address_color(addr_to_color)),
 		  get_hakc_color_name(color));
