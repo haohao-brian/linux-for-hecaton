@@ -159,6 +159,81 @@ const char *get_hakc_color_name(clique_color_t color)
 
 EXPORT_SYMBOL(get_hakc_color_name);
 
+/*
+ * HAKC builtin section coloring.
+ *
+ * Module code is MTE-colored at module load time (kernel/module.c). For
+ * builtin code that uses _HAKC_RW_DATA_COLOR_ATTR(<COLOR>), the linker
+ * places the data into named sections (.rw.hakc.<COLOR>) bounded by
+ * __hakc_rw_<COLOR>_{start,end} symbols (see arch/arm64/kernel/vmlinux.lds.S).
+ * We MTE-color each non-empty section at hakc_init_tags() time, before any
+ * HAKC-instrumented init code (e.g. inet6_init -> inet6_create) runs.
+ */
+#define DECLARE_HAKC_RW_RANGE(COLOR)                                           \
+	extern char __hakc_rw_##COLOR##_start[];                               \
+	extern char __hakc_rw_##COLOR##_end[]
+
+DECLARE_HAKC_RW_RANGE(SILVER_CLIQUE);
+DECLARE_HAKC_RW_RANGE(GREEN_CLIQUE);
+DECLARE_HAKC_RW_RANGE(RED_CLIQUE);
+DECLARE_HAKC_RW_RANGE(ORANGE_CLIQUE);
+DECLARE_HAKC_RW_RANGE(YELLOW_CLIQUE);
+DECLARE_HAKC_RW_RANGE(PURPLE_CLIQUE);
+DECLARE_HAKC_RW_RANGE(BLUE_CLIQUE);
+DECLARE_HAKC_RW_RANGE(GREY_CLIQUE);
+DECLARE_HAKC_RW_RANGE(PINK_CLIQUE);
+DECLARE_HAKC_RW_RANGE(BROWN_CLIQUE);
+DECLARE_HAKC_RW_RANGE(WHITE_CLIQUE);
+DECLARE_HAKC_RW_RANGE(BLACK_CLIQUE);
+DECLARE_HAKC_RW_RANGE(TEAL_CLIQUE);
+DECLARE_HAKC_RW_RANGE(VIOLET_CLIQUE);
+DECLARE_HAKC_RW_RANGE(CRIMSON_CLIQUE);
+DECLARE_HAKC_RW_RANGE(GOLD_CLIQUE);
+
+struct hakc_builtin_rw_range {
+	const char *name;
+	char *start;
+	char *end;
+	clique_color_t color;
+};
+
+static const struct hakc_builtin_rw_range hakc_builtin_rw_ranges[] = {
+#define HAKC_RW_ENTRY(COLOR)                                                   \
+	{ #COLOR, __hakc_rw_##COLOR##_start, __hakc_rw_##COLOR##_end, COLOR }
+	HAKC_RW_ENTRY(SILVER_CLIQUE),
+	HAKC_RW_ENTRY(GREEN_CLIQUE),
+	HAKC_RW_ENTRY(RED_CLIQUE),
+	HAKC_RW_ENTRY(ORANGE_CLIQUE),
+	HAKC_RW_ENTRY(YELLOW_CLIQUE),
+	HAKC_RW_ENTRY(PURPLE_CLIQUE),
+	HAKC_RW_ENTRY(BLUE_CLIQUE),
+	HAKC_RW_ENTRY(GREY_CLIQUE),
+	HAKC_RW_ENTRY(PINK_CLIQUE),
+	HAKC_RW_ENTRY(BROWN_CLIQUE),
+	HAKC_RW_ENTRY(WHITE_CLIQUE),
+	HAKC_RW_ENTRY(BLACK_CLIQUE),
+	HAKC_RW_ENTRY(TEAL_CLIQUE),
+	HAKC_RW_ENTRY(VIOLET_CLIQUE),
+	HAKC_RW_ENTRY(CRIMSON_CLIQUE),
+	HAKC_RW_ENTRY(GOLD_CLIQUE),
+#undef HAKC_RW_ENTRY
+};
+
+static void hakc_color_builtin_rw_sections(void)
+{
+	unsigned int i;
+	for (i = 0; i < ARRAY_SIZE(hakc_builtin_rw_ranges); i++) {
+		const struct hakc_builtin_rw_range *r =
+			&hakc_builtin_rw_ranges[i];
+		size_t size = r->end - r->start;
+		if (size == 0)
+			continue;
+		pr_info("HAKC: coloring builtin .rw.hakc.%s [%px..%px] (%zu bytes) as %d\n",
+			r->name, r->start, r->end, size, r->color);
+		hakc_color_address(r->start, r->color, size);
+	}
+}
+
 void hakc_init_tags(void)
 {
 	pr_info("Initializing tags for HAKC\n");
@@ -166,6 +241,7 @@ void hakc_init_tags(void)
 	/* Enable MTE Sync Mode for EL1. */
 	sysreg_clear_set(sctlr_el1, SCTLR_ELx_TCF_MASK, SCTLR_ELx_TCF_NONE);
 	isb();
+	hakc_color_builtin_rw_sections();
 }
 
 static bool is_readonly(unsigned long addr);

@@ -236,6 +236,44 @@ SECTIONS
 	_sdata = .;
 	RW_DATA(L1_CACHE_BYTES, PAGE_SIZE, THREAD_ALIGN)
 
+#if IS_ENABLED(CONFIG_PAC_MTE_COMPART)
+	/*
+	 * HAKC builtin per-color R/W data sections.
+	 *
+	 * Module code is colored at module load time in kernel/module.c. For
+	 * builtin code that uses _HAKC_RW_DATA_COLOR_ATTR(<COLOR>) (e.g.
+	 * net/ipv6/af_inet6.c's inetsw6[] in builtin IPv6), we need named
+	 * sections with start/end linker symbols so hakc_init_tags() can
+	 * find them and MTE-color the data at boot time.
+	 */
+	. = ALIGN(64);
+	#define HAKC_RW_SECTION(COLOR) \
+		. = ALIGN(16); \
+		PROVIDE(__hakc_rw_##COLOR##_start = .); \
+		*(.rw.hakc.COLOR) \
+		PROVIDE(__hakc_rw_##COLOR##_end = .);
+	.rw_hakc_data : {
+		HAKC_RW_SECTION(SILVER_CLIQUE)
+		HAKC_RW_SECTION(GREEN_CLIQUE)
+		HAKC_RW_SECTION(RED_CLIQUE)
+		HAKC_RW_SECTION(ORANGE_CLIQUE)
+		HAKC_RW_SECTION(YELLOW_CLIQUE)
+		HAKC_RW_SECTION(PURPLE_CLIQUE)
+		HAKC_RW_SECTION(BLUE_CLIQUE)
+		HAKC_RW_SECTION(GREY_CLIQUE)
+		HAKC_RW_SECTION(PINK_CLIQUE)
+		HAKC_RW_SECTION(BROWN_CLIQUE)
+		HAKC_RW_SECTION(WHITE_CLIQUE)
+		HAKC_RW_SECTION(BLACK_CLIQUE)
+		HAKC_RW_SECTION(TEAL_CLIQUE)
+		HAKC_RW_SECTION(VIOLET_CLIQUE)
+		HAKC_RW_SECTION(CRIMSON_CLIQUE)
+		HAKC_RW_SECTION(GOLD_CLIQUE)
+	}
+	#undef HAKC_RW_SECTION
+#endif
+
+
 	/*
 	 * Data written with the MMU off but read with the MMU on requires
 	 * cache lines to be invalidated, discarding up to a Cache Writeback
